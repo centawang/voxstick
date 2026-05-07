@@ -1,0 +1,11 @@
+## scribestick — IDF Component Manager manifest
+##
+## usb_device_uac handles the entire USB descriptor + UAC class plumbing.
+## esp_codec_dev gives us the ES8311 register-level driver so we don't have
+## to translate datasheet pages by hand.
+
+dependencies:
+  idf:
+    version: ">=5.0"
+  espressif/usb_device_uac: "*"
+  espressif/esp_codec_dev: "*"
