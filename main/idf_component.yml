@@ -1,4 +1,4 @@
-## scribestick — IDF Component Manager manifest
+## voxstick — IDF Component Manager manifest
 ##
 ## usb_device_uac handles the entire USB descriptor + UAC class plumbing.
 ## esp_codec_dev gives us the ES8311 register-level driver so we don't have
@@ -9,3 +9,7 @@ dependencies:
     version: ">=5.0"
   espressif/usb_device_uac: "*"
   espressif/esp_codec_dev: "*"
+  ## Bosch's official BMI270 sensor API. Used for orientation-based mic
+  ## auto-mute (lay stick flat -> g_uac_muted = true). Brings its own ~8 KB
+  ## firmware blob the chip needs to load before measurement.
+  espressif2022/bmi270: "^1.1.0"

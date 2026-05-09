@@ -1,4 +1,4 @@
-# scribestick implementation plan
+# voxstick implementation plan
 
 Three independently verifiable steps. Each step's output is usable on its own
 even if the next step never lands.

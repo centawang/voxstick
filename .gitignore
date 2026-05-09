@@ -7,8 +7,15 @@
 
 # ESP-IDF
 build/
+build-*/
+sdkconfig
 sdkconfig.old
+sdkconfig.stick
+sdkconfig.*-bisect
+sdkconfig.before-*
+sdkconfig.minimal-*
 managed_components/
+dependencies.lock
 
 # macOS
 .DS_Store

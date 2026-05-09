@@ -1,4 +1,4 @@
-# scribestick
+# voxstick
 
 USB push-to-talk dictation stick for macOS, built on the M5Stack StickS3 (ESP32-S3).
 
