@@ -84,11 +84,9 @@ static const char *TAG = "voxstick";
 #define I2S_WS_PIN    15
 #define I2S_DIN_PIN   16
 
-// StickS3 face buttons. BtnA front, big M5 logo. BtnB header is left in for
-// firmware compat but is unpopulated on this hardware revision — the GPIO
-// is a no-op input. We only ever expect BtnA to fire.
+// StickS3 face button. BtnA = front, big M5 logo. BtnB header is unpopulated
+// on this hardware revision so we don't bother polling it.
 #define BTN_A_GPIO    GPIO_NUM_11
-#define BTN_B_GPIO    GPIO_NUM_12
 
 // ---- LCD (ST7789P3 135x240, SPI3) ---------------------------------------
 // Numbers from the M5StickS3 datasheet / weclawbot-base reference.
@@ -448,38 +446,20 @@ static esp_err_t pmic_write(uint8_t reg, uint8_t val)
     return ret;
 }
 
-// Splash a colour briefly so we can identify which PMIC address responded
-// without USB-Serial/JTAG (which is dead once tinyusb takes the OTG PHY).
-//   green  = found at 0x34
-//   yellow = found at 0x36
-//   cyan   = found at 0x6E
-//   red    = nothing found
-static uint16_t pmic_addr_color(uint8_t a)
+// M5StickS3's M5PM1 always sits at 0x6E (verified across builds; the
+// AXP2101 0x34 / 0x36 alternates were probed during early development
+// and never ACK'd on this hardware). Probe still confirms presence so a
+// dead-bus failure mode is logged loudly.
+static esp_err_t pmic_probe(void)
 {
-    switch (a) {
-        case 0x34: return COL_GREEN;
-        case 0x36: return COL_YELLOW;
-        case 0x6E: return COL_CYAN;
-        default:   return COL_RED;
+    if (i2c_master_probe(g_i2c_bus, 0x6E, 100) != ESP_OK) {
+        ESP_LOGE(TAG, "no pmic at 0x6E");
+        lcd_status(COL_RED);
+        return ESP_ERR_NOT_FOUND;
     }
-}
-
-static void pmic_probe(void)
-{
-    static const uint8_t addrs[] = { 0x34, 0x36, 0x6E };
-    for (size_t i = 0; i < sizeof(addrs); i++) {
-        if (i2c_master_probe(g_i2c_bus, addrs[i], 100) == ESP_OK) {
-            g_pmic_addr = addrs[i];
-            ESP_LOGI(TAG, "pmic ACK at 0x%02x", g_pmic_addr);
-            // Hold the colour long enough to read off the LCD.
-            lcd_status(pmic_addr_color(g_pmic_addr));
-            vTaskDelay(pdMS_TO_TICKS(1500));
-            return;
-        }
-    }
-    ESP_LOGE(TAG, "no pmic at 0x34/0x36/0x6E");
-    lcd_status(COL_RED);
-    vTaskDelay(pdMS_TO_TICKS(1500));
+    g_pmic_addr = 0x6E;
+    ESP_LOGI(TAG, "pmic ACK at 0x6E");
+    return ESP_OK;
 }
 
 // Scan the I2C bus and log every device that ACKs. Used once to find out
@@ -595,10 +575,7 @@ static void pmic_dump_regs(const char *label)
 //   0x16  GPIO function       bit n: 1 = alt, 0 = GPIO
 static esp_err_t pmic_init(void)
 {
-    i2c_scan();
-    pmic_probe();
-    if (g_pmic_addr == 0) return ESP_ERR_NOT_FOUND;
-
+    ESP_RETURN_ON_ERROR(pmic_probe(), TAG, "pmic probe");
     pmic_dump_regs("before init");
 
     ESP_RETURN_ON_ERROR(pmic_enable_lcd_codec_rail(), TAG, "L3B / I2C_CFG");
@@ -975,58 +952,12 @@ static esp_err_t uac_output_cb(uint8_t *buf, size_t len, void *arg)
 
 static void uac_set_mute_cb(uint32_t mute, void *arg)
 {
-    static const uint8_t magic[] = { 1, 0, 1, 0, 1 };
-    static uint8_t pos = 0;
-    static TickType_t last_tick = 0;
-    TickType_t now = xTaskGetTickCount();
-
-    if (last_tick == 0 ||
-        now - last_tick > pdMS_TO_TICKS(DOWNLOAD_MAGIC_WINDOW_MS)) {
-        pos = 0;
-    }
-    last_tick = now;
-
-    if ((uint8_t)!!mute == magic[pos]) {
-        pos++;
-        ESP_LOGW(TAG, "UAC mute download magic %u/%u",
-                 pos, (unsigned)(sizeof(magic) / sizeof(magic[0])));
-        if (pos >= sizeof(magic) / sizeof(magic[0])) {
-            pos = 0;
-            request_rom_download("UAC mute magic requested ROM download", 150);
-        }
-    } else {
-        pos = ((uint8_t)!!mute == magic[0]) ? 1 : 0;
-    }
-
     g_uac_muted = !!mute;
     ESP_LOGI(TAG, "host mute=%d", (int)mute);
 }
 
 static void uac_set_volume_cb(uint32_t volume, void *arg)
 {
-    static const uint8_t magic[] = { 2, 98, 2, 98 };
-    static uint8_t pos = 0;
-    static TickType_t last_tick = 0;
-    TickType_t now = xTaskGetTickCount();
-
-    if (last_tick == 0 ||
-        now - last_tick > pdMS_TO_TICKS(DOWNLOAD_MAGIC_WINDOW_MS)) {
-        pos = 0;
-    }
-    last_tick = now;
-
-    if ((uint8_t)volume == magic[pos]) {
-        pos++;
-        ESP_LOGW(TAG, "UAC volume download magic %u/%u",
-                 pos, (unsigned)(sizeof(magic) / sizeof(magic[0])));
-        if (pos >= sizeof(magic) / sizeof(magic[0])) {
-            pos = 0;
-            request_rom_download("UAC volume magic requested ROM download", 150);
-        }
-    } else {
-        pos = ((uint8_t)volume == magic[0]) ? 1 : 0;
-    }
-
     // _volume = (volume_db + 50) * 2  -> volume_db
     int volume_db = (int)volume / 2 - 50;
     // Map volume_db to ES8311 in_gain (0..40 dB roughly). Below -10 dB just
@@ -1091,10 +1022,8 @@ bool tud_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage,
 }
 
 // =========================================================================
-// Buttons — translated into HID Keyboard reports on the composite USB
-// interface. BtnA = F19 (the canonical "I will never collide" key, used by
-// VoiceInk / Karabiner / etc. as a push-to-talk hotkey). BtnB = F20,
-// reserved for cancel / mode toggle later.
+// Buttons — BtnA only. Tap = Right Cmd + F12 (WeType voice toggle). Long
+// press (>= BTN_LONG_PRESS_MS) = Enter (send the dictated message).
 //
 // USB HID Keyboard/Keypad usage page (0x07):
 //   F13 = 0x68 .. F24 = 0x73   (TinyUSB also exposes HID_KEY_F13..F24)
@@ -1106,20 +1035,12 @@ bool tud_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage,
 #define BTN_DEBOUNCE_TICKS  2
 
 #define HID_REPORT_ID_KBD   1
-// USB HID Keyboard/Keypad page (0x07): F13=0x68 .. F24=0x73.
-// F19 / F20 are the canonical "no-collision" hotkeys VoiceInk and friends
-// expose in their PTT picker — mac-native keyboards don't have them, no
-// app maps them by default.
-//
-// Update 2026-05-09: WeChat 输入法 (WeType) hard-blocks F19 in its hotkey
-// picker even after macOS Dictation releases it. Drop BtnA to F18 instead;
-// macOS native Dictation is happy to bind F18 too if we ever need it back.
-// WeType / 微信输入法 hotkey picker rejects every F13..F24 and most loose
-// modifier-only combos. Empirical winner is Right Cmd + F12. The HID
-// Keyboard modifier byte: bit 7 = Right GUI (= Right Cmd on macOS), bit
-// 6 = Right Alt, bit 5 = Right Shift, bit 4 = Right Ctrl.
+// WeType (微信输入法) hotkey picker rejects every F13..F24 and most loose
+// modifier-only combos. F19 also clashes with macOS native Dictation.
+// Empirical winner is Right Cmd + F12. HID Keyboard modifier byte bit 7
+// = Right GUI (Right Cmd on macOS).
 #define HID_KEY_F12         0x45
-#define HID_MOD_RIGHT_GUI   0x80    // Right Cmd
+#define HID_MOD_RIGHT_GUI   0x80
 #define HID_KEY_ENTER       0x28    // Return / Enter — long-press BtnA = send
 
 // Press shorter than this is a tap (toggle voice). Press at-or-longer is a
@@ -1188,26 +1109,13 @@ void voxstick_hid_set_report_cb(uint8_t instance, uint8_t report_id,
 static void buttons_init(void)
 {
     gpio_config_t cfg = {
-        .pin_bit_mask  = (1ULL << BTN_A_GPIO) | (1ULL << BTN_B_GPIO),
+        .pin_bit_mask  = (1ULL << BTN_A_GPIO),
         .mode          = GPIO_MODE_INPUT,
         .pull_up_en    = GPIO_PULLUP_ENABLE,
         .pull_down_en  = GPIO_PULLDOWN_DISABLE,
         .intr_type     = GPIO_INTR_DISABLE,
     };
     ESP_ERROR_CHECK(gpio_config(&cfg));
-}
-
-// Send the current "keys held" set as one boot-keyboard report.
-static void hid_send_keys(uint8_t key_a, uint8_t key_b)
-{
-    if (!tud_hid_ready()) {
-        return;     // host hasn't enumerated the HID interface yet
-    }
-    uint8_t keys[6] = {0};
-    int n = 0;
-    if (key_a) keys[n++] = key_a;
-    if (key_b) keys[n++] = key_b;
-    tud_hid_keyboard_report(HID_REPORT_ID_KBD, /* modifier */ 0, keys);
 }
 
 // Boot-time gesture: hold BtnA + tap side Reset → app starts → app sees
@@ -1370,7 +1278,7 @@ void app_main(void)
 
     buttons_init();
     xTaskCreate(button_task, "btn", 2048, NULL, 5, NULL);
-    ESP_LOGI(TAG, "buttons up (BtnA=GPIO%d BtnB=GPIO%d)", BTN_A_GPIO, BTN_B_GPIO);
+    ESP_LOGI(TAG, "buttons up (BtnA=GPIO%d)", BTN_A_GPIO);
 
     // BMI270 IMU for orientation-based mic auto-mute. Best-effort: if init
     // fails (chip absent / I2C glitch / blob load failure) we just skip the
