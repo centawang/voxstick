@@ -72,6 +72,13 @@ jobs:
           cat > "$DIR/FLASH-README.md" <<EOF
           # voxstick ${{ steps.meta.outputs.version }}
 
+          Browser install (easiest):
+
+              https://openbrt.github.io/voxstick/install.html
+
+          Use desktop Chrome or Microsoft Edge, connect the M5Stack StickS3,
+          then click "Connect and flash".
+
           One-shot flash (8 MB image, easiest):
 
               esptool.py --chip esp32s3 -p /dev/cu.usbmodem* write_flash 0x0 voxstick-full.bin

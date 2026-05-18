@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>VoxStick Web Installer</title>
+    <meta
+      name="description"
+      content="Flash VoxStick firmware to an M5Stack StickS3 directly from Chrome or Edge."
+    />
+    <script
+      type="module"
+      src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"
+    ></script>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --page: #f6f8fb;
+        --panel: #ffffff;
+        --text: #172033;
+        --muted: #5c687a;
+        --line: #d9e0ea;
+        --accent: #147e63;
+        --accent-dark: #0f604c;
+        --accent-soft: #dff5ee;
+        --warn: #8a5a00;
+        --warn-bg: #fff4d8;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --page: #11151c;
+          --panel: #181f2a;
+          --text: #edf3fb;
+          --muted: #a8b2c1;
+          --line: #2a3545;
+          --accent: #2fc49b;
+          --accent-dark: #25ad88;
+          --accent-soft: #17382f;
+          --warn: #ffd37a;
+          --warn-bg: #3c2c0f;
+        }
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: var(--page);
+        color: var(--text);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+        line-height: 1.55;
+      }
+
+      main {
+        width: min(960px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 40px 0 48px;
+      }
+
+      header {
+        display: grid;
+        gap: 12px;
+        padding-bottom: 28px;
+      }
+
+      .eyebrow {
+        color: var(--accent);
+        font-size: 0.85rem;
+        font-weight: 700;
+        letter-spacing: 0;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(2rem, 5vw, 4rem);
+        line-height: 1;
+        letter-spacing: 0;
+      }
+
+      .lede {
+        max-width: 760px;
+        margin: 0;
+        color: var(--muted);
+        font-size: 1.05rem;
+      }
+
+      .installer {
+        display: grid;
+        gap: 24px;
+        grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+        align-items: start;
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 24px;
+      }
+
+      .flash-panel {
+        display: grid;
+        gap: 18px;
+      }
+
+      .meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .meta li {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 5px 10px;
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+
+      esp-web-install-button {
+        --esp-tools-button-color: var(--accent);
+        --esp-tools-button-text-color: #ffffff;
+        --esp-tools-button-border-radius: 8px;
+      }
+
+      button[slot="activate"] {
+        width: 100%;
+        min-height: 52px;
+        border: 0;
+        border-radius: 8px;
+        background: var(--accent);
+        color: #ffffff;
+        cursor: pointer;
+        font: inherit;
+        font-weight: 750;
+      }
+
+      button[slot="activate"]:hover {
+        background: var(--accent-dark);
+      }
+
+      .notice {
+        margin: 0;
+        border-radius: 8px;
+        background: var(--warn-bg);
+        color: var(--warn);
+        padding: 12px 14px;
+        font-size: 0.95rem;
+      }
+
+      h2 {
+        margin: 0 0 14px;
+        font-size: 1.1rem;
+        letter-spacing: 0;
+      }
+
+      ol,
+      ul {
+        margin: 0;
+        padding-left: 1.25rem;
+      }
+
+      li + li {
+        margin-top: 10px;
+      }
+
+      code {
+        border-radius: 5px;
+        background: var(--accent-soft);
+        color: var(--text);
+        padding: 0.12em 0.35em;
+      }
+
+      a {
+        color: var(--accent);
+      }
+
+      .fine-print {
+        color: var(--muted);
+        font-size: 0.92rem;
+      }
+
+      @media (max-width: 760px) {
+        main {
+          padding-top: 28px;
+        }
+
+        .installer {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div class="eyebrow">M5Stack StickS3 / ESP32-S3</div>
+        <h1>VoxStick Web Installer</h1>
+        <p class="lede">
+          直接从浏览器把 VoxStick 固件刷进 M5Stack StickS3。Use this page to
+          flash VoxStick firmware to your StickS3 without installing ESP-IDF or
+          esptool.
+        </p>
+      </header>
+
+      <section class="installer" aria-label="VoxStick firmware installer">
+        <div class="panel flash-panel">
+          <ul class="meta">
+            <li>Firmware v0.1.0</li>
+            <li>Target ESP32-S3</li>
+            <li>Image offset 0x0</li>
+          </ul>
+
+          <esp-web-install-button manifest="./firmware/v0.1.0/manifest.json">
+            <button slot="activate">连接并烧录 VoxStick / Connect and flash</button>
+            <span slot="unsupported">
+              请使用桌面版 Chrome 或 Microsoft Edge 打开本页。
+            </span>
+            <span slot="not-allowed">
+              请通过 HTTPS 或 localhost 打开本页，Web Serial 需要安全上下文。
+            </span>
+          </esp-web-install-button>
+
+          <p class="notice">
+            烧录会写入完整固件镜像。Keep the StickS3 connected until the
+            installer says flashing is complete.
+          </p>
+        </div>
+
+        <aside class="panel">
+          <h2>Steps / 步骤</h2>
+          <ol>
+            <li>Use desktop Chrome or Edge. Safari and iOS browsers do not support Web Serial.</li>
+            <li>Plug the M5Stack StickS3 into USB-C.</li>
+            <li>Click the flash button and select the StickS3 serial port.</li>
+            <li>After flashing, unplug/replug the stick and select <code>StickS3-Mic</code> as the input device if needed.</li>
+          </ol>
+        </aside>
+      </section>
+
+      <section class="panel" style="margin-top: 24px">
+        <h2>Troubleshooting / 故障恢复</h2>
+        <ul>
+          <li>If the port does not appear, try another data-capable USB-C cable or reconnect while holding BtnA.</li>
+          <li>If you already have VoxStick firmware running, <code>bash tools/trigger-download.sh</code> can reboot it into ROM download mode.</li>
+          <li>Command-line fallback: <code>esptool.py --chip esp32s3 write_flash 0x0 voxstick-full.bin</code>.</li>
+        </ul>
+        <p class="fine-print">
+          Firmware source and releases:
+          <a href="https://github.com/openbrt/voxstick">github.com/openbrt/voxstick</a>
+        </p>
+      </section>
+    </main>
+  </body>
+</html>

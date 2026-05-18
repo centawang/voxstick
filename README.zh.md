@@ -58,6 +58,34 @@
 
 [M5Stack StickS3](https://docs.m5stack.com/en/core/StickS3) — 大约 ¥150 / $25，预装一颗 ESP32-S3 + ES8311 codec + 锂电 + LCD + IMU。voxstick 的固件直接刷上去，不用焊接。
 
+## 最快烧录：网页一键安装
+
+普通用户不用装 ESP-IDF，也不用配 Python。直接用网页烧录器：
+
+1. 用桌面版 Chrome 或 Microsoft Edge 打开
+   <https://openbrt.github.io/voxstick/install.html>
+2. 用 USB-C 数据线插上 M5Stack StickS3
+3. 点 **连接并烧录 VoxStick / Connect and flash**，选择 StickS3 的串口
+4. 等烧录完成后拔插一次设备，再去微信输入法里配置语音输入快捷键
+
+这个页面用的是 [ESP Web Tools](https://esphome.github.io/esp-web-tools/)，
+会把合并好的 `voxstick-full.bin` 从 `0x0` 一次性写进去。网页安装器源码在
+[`docs/install.html`](docs/install.html)，manifest 在
+[`docs/firmware/v0.1.0/manifest.json`](docs/firmware/v0.1.0/manifest.json)。
+
+如果 GitHub Pages 还没打开，项目维护者需要到仓库
+`Settings > Pages > Deploy from a branch`，选择 `main` 分支和 `docs/`
+目录。打开后上面的 `openbrt.github.io` 链接就能直接用了。
+
+命令行兜底方式：
+
+```sh
+curl -LO https://github.com/openbrt/voxstick/releases/download/v0.1.0/voxstick-full.bin
+esptool.py --chip esp32s3 -p /dev/cu.usbmodem* write_flash 0x0 voxstick-full.bin
+```
+
+Windows 用户把端口换成类似 `COM5` 即可。
+
 ## 编译 & 烧录
 
 ```sh

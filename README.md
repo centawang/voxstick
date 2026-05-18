@@ -32,6 +32,35 @@ work — VoiceInk, MacWhisper Pro, or macOS native Dictation.
 [M5Stack StickS3](https://docs.m5stack.com/en/core/StickS3) — ESP32-S3
 + ES8311 codec + MEMS mic + ST7789 LCD + BMI270 IMU + USB-C, ~$25.
 
+## Install prebuilt firmware
+
+The easiest path is the browser installer:
+
+1. Open <https://openbrt.github.io/voxstick/install.html> in desktop Chrome
+   or Microsoft Edge.
+2. Plug in the M5Stack StickS3 over USB-C.
+3. Click **Connect and flash**, choose the StickS3 serial port, and wait for
+   the install to finish.
+
+The installer is powered by
+[ESP Web Tools](https://esphome.github.io/esp-web-tools/) and writes the
+merged `voxstick-full.bin` image at flash offset `0x0`. The static installer
+files live in [`docs/install.html`](docs/install.html), with the firmware
+manifest in [`docs/firmware/v0.1.0/manifest.json`](docs/firmware/v0.1.0/manifest.json).
+
+If GitHub Pages is not enabled yet, publish this repository from the `docs/`
+folder (`Settings > Pages > Deploy from a branch > main / docs`) and the URL
+above will become live.
+
+Command-line fallback:
+
+```sh
+curl -LO https://github.com/openbrt/voxstick/releases/download/v0.1.0/voxstick-full.bin
+esptool.py --chip esp32s3 -p /dev/cu.usbmodem* write_flash 0x0 voxstick-full.bin
+```
+
+On Windows, replace the port with something like `COM5`.
+
 ## Build
 
 ```sh

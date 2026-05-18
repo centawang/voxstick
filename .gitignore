@@ -27,6 +27,7 @@ dependencies.lock
 # Misc
 *.bin
 !firmware/*.bin
+!docs/firmware/**/*.bin
 
 # Upstream is a fetched reference, not part of the project
 upstream/
