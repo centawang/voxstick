@@ -70,14 +70,14 @@
 
 普通用户不用装 ESP-IDF，也不用配 Python。直接用网页烧录器：
 
-1. 用桌面版 Chrome 或 Microsoft Edge 打开
+1. **电脑：**用桌面版 Chrome 或 Microsoft Edge 打开
    <https://openbrt.github.io/voxstick/install.html>
-2. 用能传数据的 USB-C 线插上 M5Stack StickS3
-3. 长按侧边 reset/PWR 键约 2 秒，看到机身内部绿色 LED 闪烁后松开，
+2. **硬件：**用能传数据的 USB-C 线把 M5Stack StickS3 连接到电脑
+3. **硬件：**长按 StickS3 侧边 reset/PWR 键约 2 秒，看到机身内部绿色 LED 闪烁后松开，
    这时已经进入 download mode
-4. 点 **连接并烧录 VoxStick**，选择 StickS3 的串口
-5. 等烧录完成后拔掉 USB，双击侧边 PWR 键让 StickS3 完全关机，再插回 USB
-6. 固件启动后，再去微信输入法里配置语音输入快捷键
+4. **本页面：**点 **连接并烧录 VoxStick**，在浏览器串口选择框里选择 StickS3 串口并确认安装
+5. **硬件：**等烧录完成后拔掉 USB，双击侧边 PWR 键让 StickS3 完全关机，再插回 USB
+6. **电脑系统 / 微信输入法：**固件启动后，在系统声音输入或微信输入法语音输入设置中选择 `StickS3-Mic`
 
 这个页面用的是 [ESP Web Tools](https://esphome.github.io/esp-web-tools/)，
 会把合并好的 `voxstick-full.bin` 从 `0x0` 一次性写进去。网页安装器源码在

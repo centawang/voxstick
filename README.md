@@ -47,15 +47,20 @@ work — VoiceInk, MacWhisper Pro, or macOS native Dictation.
 
 The easiest path is the browser installer:
 
-1. Open <https://openbrt.github.io/voxstick/install-en.html> in desktop Chrome
-   or Microsoft Edge.
-2. Plug in the M5Stack StickS3 over USB-C with a data-capable cable.
-3. Hold the side reset/PWR button for about 2 seconds. Release it when the
-   internal green LED blinks; the StickS3 is now in download mode.
-4. Click **Connect and flash**, choose the StickS3 serial port, and wait for
-   the install to finish.
-5. After flashing, unplug USB, double-click the side PWR button to fully power
-   off the StickS3, then plug USB back in.
+1. **Computer:** open <https://openbrt.github.io/voxstick/install-en.html> in
+   desktop Chrome or Microsoft Edge.
+2. **Hardware:** connect the M5Stack StickS3 to the computer over USB-C with a
+   data-capable cable.
+3. **Hardware:** hold the StickS3 side reset/PWR button for about 2 seconds.
+   Release it when the internal green LED blinks; the StickS3 is now in
+   download mode.
+4. **This page:** click **Connect and flash**, choose the StickS3 serial port
+   in the browser picker, and approve the install.
+5. **Hardware:** after flashing, unplug USB, double-click the side PWR button
+   to fully power off the StickS3, then plug USB back in.
+6. **Computer OS / dictation app:** after the firmware boots, select
+   `StickS3-Mic` in system sound input settings or your dictation app's
+   microphone settings.
 
 The installer is powered by
 [ESP Web Tools](https://esphome.github.io/esp-web-tools/) and writes the
