@@ -174,6 +174,16 @@
         margin-top: 10px;
       }
 
+      .step-title {
+        display: block;
+        font-weight: 750;
+      }
+
+      .step-title + span {
+        display: block;
+        color: var(--muted);
+      }
+
       code {
         border-radius: 5px;
         background: var(--accent-soft);
@@ -188,6 +198,10 @@
       .fine-print {
         color: var(--muted);
         font-size: 0.92rem;
+      }
+
+      .source-list {
+        margin-top: 12px;
       }
 
       @media (max-width: 760px) {
@@ -232,20 +246,58 @@
           </esp-web-install-button>
 
           <p class="notice">
-            烧录完成后 StickS3 不一定会自动重启。Wait until flashing is complete,
-            then unplug USB, double-click the side PWR button to fully power off,
-            and plug USB back in.
+            烧录完成后 StickS3 不一定会自动重启。Wait until the page says the
+            install is complete, then unplug USB, double-press the side button to
+            power off, and plug USB back in.
           </p>
         </div>
 
         <aside class="panel">
-          <h2>Steps / 步骤</h2>
+          <h2>烧录步骤 / Flashing Steps</h2>
           <ol>
-            <li>Use desktop Chrome or Edge. Safari and iOS browsers do not support Web Serial.</li>
-            <li>Plug the M5Stack StickS3 into USB-C.</li>
-            <li>Click the flash button and select the StickS3 serial port.</li>
-            <li>After flashing, unplug USB, double-click the side PWR button, then plug USB back in.</li>
-            <li>When the firmware boots, select <code>StickS3-Mic</code> as the input device if needed.</li>
+            <li>
+              <span class="step-title">1. 打开网页 / Open this page</span>
+              <span>使用桌面版 Chrome 或 Microsoft Edge。Safari、Firefox、iOS
+                浏览器不支持 Web Serial。Use desktop Chrome or Edge; Web Serial
+                is not available in Safari, Firefox, or iOS browsers.</span>
+            </li>
+            <li>
+              <span class="step-title">2. 接 USB 数据线 / Connect USB-C</span>
+              <span>用能传数据的 USB-C 线连接 StickS3。如果串口不出现，优先换一根
+                数据线或电脑 USB 口。Use a data-capable USB-C cable. If no port
+                appears, try another cable or USB port first.</span>
+            </li>
+            <li>
+              <span class="step-title">3. 进入下载模式 / Enter download mode</span>
+              <span>按住 StickS3 侧边 reset/PWR 键约 2 秒，看到机身内部绿色 LED
+                闪烁后松开。Hold the side reset/PWR button for about 2 seconds;
+                release it when the internal green LED blinks.</span>
+            </li>
+            <li>
+              <span class="step-title">4. 选择串口并烧录 / Select the port and flash</span>
+              <span>点击左侧按钮，选择 StickS3 的串口，然后确认安装。Click
+                <strong>Connect and flash</strong>, choose the StickS3 serial
+                port, then approve the install.</span>
+            </li>
+            <li>
+              <span class="step-title">5. 等待完成 / Wait for completion</span>
+              <span>页面显示烧录完成前不要拔线。Do not unplug the cable until the
+                page reports that installation has finished.</span>
+            </li>
+            <li>
+              <span class="step-title">6. 重新开机 / Restart the StickS3</span>
+              <span>StickS3 带电池，网页烧录后可能不会自动重启。拔掉 USB，双击侧边键关机，
+                再插回 USB；如只是关机后开机，单击侧边键即可。Because StickS3 is
+                battery-backed, it may not auto-reboot after flashing. Unplug USB,
+                double-press the side button to power off, then plug USB back in;
+                a single press powers it on.</span>
+            </li>
+            <li>
+              <span class="step-title">7. 选择麦克风 / Select the microphone</span>
+              <span>固件启动后，系统里选择 <code>StickS3-Mic</code> 作为输入设备。
+                After boot, choose <code>StickS3-Mic</code> as the input device
+                if your app does not select it automatically.</span>
+            </li>
           </ol>
         </aside>
       </section>
@@ -253,14 +305,20 @@
       <section class="panel" style="margin-top: 24px">
         <h2>Troubleshooting / 故障恢复</h2>
         <ul>
-          <li>If the port does not appear, try another data-capable USB-C cable or reconnect while holding BtnA.</li>
-          <li>Do not long-press the side PWR button for recovery; on StickS3 that can latch BOOT mode. Use unplug + double-click PWR instead.</li>
-          <li>If you already have VoxStick firmware running, <code>bash tools/trigger-download.sh</code> can reboot it into ROM download mode.</li>
-          <li>Command-line fallback: <code>esptool.py --chip esp32s3 write_flash 0x0 voxstick-full.bin</code>.</li>
+          <li>看不到串口时，先确认浏览器是桌面 Chrome/Edge，网页是 HTTPS 打开，并换一根 USB-C 数据线。If no port appears, confirm you are using desktop Chrome/Edge over HTTPS, then try another data cable.</li>
+          <li>仍然看不到串口时，重新执行官方下载模式动作：长按侧边键约 2 秒，内部绿色 LED 闪烁后松开，再点连接。If the port is still missing, enter download mode again: hold the side button for about 2 seconds, release when the green LED blinks, then reconnect.</li>
+          <li>如果已经运行 VoxStick 固件，也可以在本仓库里执行 <code>bash tools/trigger-download.sh</code> 让设备重启到 ROM 下载模式。If VoxStick is already running, <code>bash tools/trigger-download.sh</code> can reboot it into ROM download mode.</li>
+          <li>命令行兜底：<code>esptool.py --chip esp32s3 write_flash 0x0 voxstick-full.bin</code>。Command-line fallback: use esptool to write the merged image at offset <code>0x0</code>.</li>
         </ul>
         <p class="fine-print">
           Firmware source and releases:
           <a href="https://github.com/openbrt/voxstick">github.com/openbrt/voxstick</a>
+        </p>
+        <p class="fine-print source-list">
+          StickS3 button and download-mode wording follows the official
+          <a href="https://docs.m5stack.com/en/core/StickS3">M5Stack StickS3 product documentation</a>
+          and
+          <a href="https://docs.m5stack.com/en/arduino/m5sticks3/program">StickS3 Arduino upload guide</a>.
         </p>
       </section>
     </main>
