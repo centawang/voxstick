@@ -27,6 +27,7 @@
 #include "driver/i2c_master.h"
 #include "driver/i2s_std.h"
 #include "driver/gpio.h"
+#include "driver/ledc.h"
 #include "driver/spi_master.h"
 #include "usb_device_uac.h"
 #include "esp_codec_dev.h"
@@ -99,13 +100,19 @@ static const char *TAG = "voxstick";
 #define LCD_MOSI_PIN      39
 #define LCD_W             135
 #define LCD_H             240
+#define LCD_BL_LEDC_MODE      LEDC_LOW_SPEED_MODE
+#define LCD_BL_LEDC_TIMER     LEDC_TIMER_0
+#define LCD_BL_LEDC_CHANNEL   LEDC_CHANNEL_0
+#define LCD_BL_DUTY_RES       LEDC_TIMER_10_BIT
+#define LCD_BL_DUTY_MAX       ((1U << 10) - 1U)
+#define LCD_BL_DUTY_READY     ((LCD_BL_DUTY_MAX * 12U) / 100U)
 // ST7789 has 240-row visible window with a 40-row offset for 135-wide panels.
 #define LCD_X_OFFSET      52
 #define LCD_Y_OFFSET      40
 
-// 16-bit RGB565 colors for the boot-stage status painting. We splash one of
-// these full-screen at every init step so a black brick after flash means
-// "didn't even reach app_main" rather than a silent UAC failure.
+// 16-bit RGB565 colors for low-power status drawing. Runtime leaves most
+// pixels black and keeps the backlight dim; the user still gets a clear mic
+// open / muted signal without lighting the whole LCD.
 #define COL_BLACK         0x0000
 #define COL_WHITE         0xFFFF
 #define COL_RED           0xF800
@@ -117,6 +124,7 @@ static const char *TAG = "voxstick";
 #define COL_ORANGE        0xFD20
 #define COL_DIM_RED       0x4000
 #define COL_DIM_CYAN      0x0210
+#define COL_DARK_GRAY     0x0841
 
 // ---- Audio format (must match sdkconfig CONFIG_UAC_*) --------------------
 #define AUDIO_SAMPLE_RATE  16000
@@ -140,8 +148,6 @@ static const char *TAG = "voxstick";
 #define VAD_ON_LEVEL       900U
 #define VAD_OFF_LEVEL      450U
 #define VAD_FULL_LEVEL     5000U
-#define VAD_IDLE_RADIUS    14
-#define VAD_MAX_RADIUS     55
 #define VAD_FRAME_MS       100
 
 // ---- Globals -------------------------------------------------------------
@@ -165,11 +171,11 @@ static volatile bool            g_vad_display_enabled = false;
 static volatile bool            g_imu_mute  = false;
 
 // =========================================================================
-// LCD — ST7789P3 over SPI3, used as a coarse boot-stage indicator.
+// LCD — ST7789P3 over SPI3, used as a low-power status indicator.
 //
-// The whole display is painted a solid colour for each init phase so we can
-// tell from across the room what the firmware is doing without needing the
-// USB serial console (which dies the moment TinyUSB takes the OTG PHY).
+// Boot draws a tiny colour badge; runtime draws a small mic icon and audio
+// meter on a black background. This is enough to tell the stick is alive
+// without running the StickS3 LCD at full-brightness flood-fill all day.
 //
 // Stage palette (also returned by lcd_status() for grep-ability):
 //   white   = boot reached app_main
@@ -184,14 +190,49 @@ static esp_lcd_panel_handle_t g_lcd = NULL;
 // uint16_t and we paint by repeating one row 240 times.
 static uint16_t g_lcd_line[LCD_W];
 
-static esp_err_t lcd_init(void)
+static inline uint16_t lcd_swap_rgb565(uint16_t rgb565)
 {
-    // Backlight as plain GPIO, on at full brightness. Step 3 will PWM this.
+    return (uint16_t)((rgb565 << 8) | (rgb565 >> 8));
+}
+
+static esp_err_t lcd_backlight_init(void)
+{
     gpio_reset_pin(LCD_BL_PIN);
     gpio_set_direction(LCD_BL_PIN, GPIO_MODE_OUTPUT);
-    gpio_set_drive_capability(LCD_BL_PIN, GPIO_DRIVE_CAP_3);
-    gpio_set_level(LCD_BL_PIN, 1);
-    ESP_LOGI(TAG, "lcd backlight GPIO%d=%d", LCD_BL_PIN, gpio_get_level(LCD_BL_PIN));
+    gpio_set_level(LCD_BL_PIN, 0);
+
+    ledc_timer_config_t timer_cfg = {
+        .speed_mode       = LCD_BL_LEDC_MODE,
+        .duty_resolution  = LCD_BL_DUTY_RES,
+        .timer_num        = LCD_BL_LEDC_TIMER,
+        .freq_hz          = 5000,
+        .clk_cfg          = LEDC_AUTO_CLK,
+    };
+    ESP_RETURN_ON_ERROR(ledc_timer_config(&timer_cfg), TAG, "lcd_bl_timer");
+
+    ledc_channel_config_t channel_cfg = {
+        .gpio_num   = LCD_BL_PIN,
+        .speed_mode = LCD_BL_LEDC_MODE,
+        .channel    = LCD_BL_LEDC_CHANNEL,
+        .intr_type  = LEDC_INTR_DISABLE,
+        .timer_sel  = LCD_BL_LEDC_TIMER,
+        .duty       = LCD_BL_DUTY_READY,
+        .hpoint     = 0,
+    };
+    ESP_RETURN_ON_ERROR(ledc_channel_config(&channel_cfg), TAG, "lcd_bl_channel");
+
+    ESP_LOGI(TAG, "lcd backlight GPIO%d pwm duty=%u/%u",
+             LCD_BL_PIN, (unsigned)LCD_BL_DUTY_READY, (unsigned)LCD_BL_DUTY_MAX);
+    return ESP_OK;
+}
+
+static esp_err_t lcd_init(void)
+{
+    // Keep the backlight off while the panel is being initialized; LEDC PWM
+    // starts it at a dim duty cycle once the panel is ready.
+    gpio_reset_pin(LCD_BL_PIN);
+    gpio_set_direction(LCD_BL_PIN, GPIO_MODE_OUTPUT);
+    gpio_set_level(LCD_BL_PIN, 0);
 
     spi_bus_config_t buscfg = {
         .sclk_io_num     = LCD_SCK_PIN,
@@ -240,23 +281,65 @@ static esp_err_t lcd_init(void)
     // 240x320 framebuffer ST7789 hardware actually has.
     esp_lcd_panel_set_gap(g_lcd, LCD_X_OFFSET, LCD_Y_OFFSET);
     esp_lcd_panel_disp_on_off(g_lcd, true);
+    ESP_RETURN_ON_ERROR(lcd_backlight_init(), TAG, "lcd_backlight");
     ESP_LOGI(TAG, "lcd init ok (ST7789 %dx%d gap=%d,%d)",
              LCD_W, LCD_H, LCD_X_OFFSET, LCD_Y_OFFSET);
     return ESP_OK;
 }
 
-// Repaint the entire screen with one solid colour. Cheap status indicator —
-// 135 * 240 * 2B = 65 KB push, takes ~5 ms over 40 MHz SPI.
-static void lcd_status(uint16_t rgb565)
+static void lcd_fill_rect(int x0, int y0, int x1, int y1, uint16_t rgb565)
 {
     if (!g_lcd) return;
-    for (int x = 0; x < LCD_W; x++) g_lcd_line[x] = (rgb565 << 8) | (rgb565 >> 8);
-    for (int y = 0; y < LCD_H; y++) {
-        esp_lcd_panel_draw_bitmap(g_lcd, 0, y, LCD_W, y + 1, g_lcd_line);
+    if (x0 < 0) x0 = 0;
+    if (y0 < 0) y0 = 0;
+    if (x1 > LCD_W) x1 = LCD_W;
+    if (y1 > LCD_H) y1 = LCD_H;
+    if (x0 >= x1 || y0 >= y1) return;
+
+    uint16_t px = lcd_swap_rgb565(rgb565);
+    int width = x1 - x0;
+    for (int x = 0; x < width; x++) g_lcd_line[x] = px;
+    for (int y = y0; y < y1; y++) {
+        esp_lcd_panel_draw_bitmap(g_lcd, x0, y, x1, y + 1, g_lcd_line);
     }
 }
 
-static void lcd_draw_vad_circle(uint32_t level, bool active,
+static void lcd_clear(uint16_t rgb565)
+{
+    lcd_fill_rect(0, 0, LCD_W, LCD_H, rgb565);
+}
+
+// Low-power boot/status marker: black screen plus a tiny colour badge.
+static void lcd_status(uint16_t rgb565)
+{
+    if (!g_lcd) return;
+    lcd_clear(COL_BLACK);
+    lcd_fill_rect((LCD_W - 38) / 2, LCD_H - 20,
+                  (LCD_W + 38) / 2, LCD_H - 12, rgb565);
+}
+
+static void lcd_draw_thick_line(int x0, int y0, int x1, int y1,
+                                int thickness, uint16_t rgb565)
+{
+    int dx = x1 - x0;
+    int dy = y1 - y0;
+    int steps = (dx < 0 ? -dx : dx) > (dy < 0 ? -dy : dy)
+        ? (dx < 0 ? -dx : dx)
+        : (dy < 0 ? -dy : dy);
+    if (steps == 0) {
+        lcd_fill_rect(x0, y0, x0 + thickness, y0 + thickness, rgb565);
+        return;
+    }
+
+    int r = thickness / 2;
+    for (int i = 0; i <= steps; i++) {
+        int x = x0 + (dx * i) / steps;
+        int y = y0 + (dy * i) / steps;
+        lcd_fill_rect(x - r, y - r, x + r + 1, y + r + 1, rgb565);
+    }
+}
+
+static void lcd_draw_mic_status(uint32_t level, bool active,
                                 bool codec_ready, bool muted)
 {
     if (!g_lcd) return;
@@ -264,41 +347,49 @@ static void lcd_draw_vad_circle(uint32_t level, bool active,
     if (level > VAD_FULL_LEVEL) {
         level = VAD_FULL_LEVEL;
     }
-    int radius = VAD_IDLE_RADIUS +
-                 (int)(level * (VAD_MAX_RADIUS - VAD_IDLE_RADIUS) / VAD_FULL_LEVEL);
-    if (active && radius < 34) {
-        radius = 34;
-    }
-    if (muted) {
-        radius = VAD_IDLE_RADIUS;
-    }
-
-    uint16_t bg = codec_ready ? (muted ? COL_DIM_RED : COL_GREEN) : COL_RED;
-    uint16_t circle = codec_ready
-        ? (muted ? COL_BLUE : (active ? COL_WHITE : COL_CYAN))
-        : COL_WHITE;
-    uint16_t core = codec_ready ? (active ? COL_GREEN : COL_BLACK) : COL_BLACK;
 
     const int cx = LCD_W / 2;
-    const int cy = LCD_H / 2;
-    const int r2 = radius * radius;
-    const int core_radius = radius / 3;
-    const int core_r2 = core_radius * core_radius;
+    uint16_t mic = codec_ready
+        ? (muted ? COL_DIM_RED : (active ? COL_WHITE : COL_CYAN))
+        : COL_RED;
+    uint16_t accent = codec_ready
+        ? (muted ? COL_RED : (active ? COL_GREEN : COL_DIM_CYAN))
+        : COL_RED;
 
-    uint16_t bg_sw = (bg << 8) | (bg >> 8);
-    uint16_t circle_sw = (circle << 8) | (circle >> 8);
-    uint16_t core_sw = (core << 8) | (core >> 8);
+    lcd_fill_rect(0, 34, LCD_W, 184, COL_BLACK);
 
-    for (int y = 0; y < LCD_H; y++) {
-        int dy = y - cy;
-        int dy2 = dy * dy;
-        for (int x = 0; x < LCD_W; x++) {
-            int dx = x - cx;
-            int d2 = dx * dx + dy2;
-            g_lcd_line[x] = (d2 <= core_r2) ? core_sw :
-                            (d2 <= r2) ? circle_sw : bg_sw;
-        }
-        esp_lcd_panel_draw_bitmap(g_lcd, 0, y, LCD_W, y + 1, g_lcd_line);
+    // Mic capsule outline.
+    lcd_fill_rect(cx - 10, 58, cx + 11, 62, mic);
+    lcd_fill_rect(cx - 15, 62, cx + 16, 66, mic);
+    lcd_fill_rect(cx - 18, 66, cx - 14, 112, mic);
+    lcd_fill_rect(cx + 14, 66, cx + 18, 112, mic);
+    lcd_fill_rect(cx - 15, 112, cx + 16, 116, mic);
+    lcd_fill_rect(cx - 10, 116, cx + 11, 120, mic);
+
+    if (active && codec_ready && !muted) {
+        lcd_fill_rect(cx - 10, 72, cx + 11, 106, COL_DIM_CYAN);
+    }
+
+    // Pickup frame and stand.
+    lcd_fill_rect(cx - 30, 92, cx - 26, 114, mic);
+    lcd_fill_rect(cx + 26, 92, cx + 30, 114, mic);
+    lcd_fill_rect(cx - 26, 120, cx + 27, 124, mic);
+    lcd_fill_rect(cx - 2, 124, cx + 3, 148, mic);
+    lcd_fill_rect(cx - 20, 148, cx + 21, 152, mic);
+
+    // Tiny level meter: enough movement to show life, not a bright animation.
+    lcd_fill_rect(cx - 30, 166, cx + 31, 170, COL_DARK_GRAY);
+    if (codec_ready && !muted && level > 0) {
+        int meter_w = (int)(level * 61U / VAD_FULL_LEVEL);
+        if (meter_w < 2) meter_w = 2;
+        lcd_fill_rect(cx - 30, 166, cx - 30 + meter_w, 170, accent);
+    }
+
+    if (muted) {
+        lcd_draw_thick_line(cx - 32, 154, cx + 32, 58, 6, COL_RED);
+    } else if (!codec_ready) {
+        lcd_draw_thick_line(cx - 28, 154, cx + 28, 58, 5, COL_RED);
+        lcd_draw_thick_line(cx - 28, 58, cx + 28, 154, 5, COL_RED);
     }
 }
 
@@ -307,7 +398,6 @@ static void vad_lcd_task(void *arg)
     (void)arg;
     g_vad_display_enabled = true;
 
-    int last_radius = -1;
     bool last_active = false;
     bool last_codec_ready = false;
     bool last_muted = false;
@@ -321,25 +411,18 @@ static void vad_lcd_task(void *arg)
 
         uint32_t level = g_vad_level;
         uint32_t capped = level > VAD_FULL_LEVEL ? VAD_FULL_LEVEL : level;
-        int radius = VAD_IDLE_RADIUS +
-                     (int)(capped * (VAD_MAX_RADIUS - VAD_IDLE_RADIUS) / VAD_FULL_LEVEL);
-        if (g_vad_active && radius < 34) {
-            radius = 34;
-        }
-        if (g_uac_muted) {
-            radius = VAD_IDLE_RADIUS;
-        }
-
-        uint32_t bucket = capped / 160U;
         bool active = g_vad_active;
         bool codec_ready = g_codec_ready;
-        bool muted = g_uac_muted;
+        bool muted = g_uac_muted || g_imu_mute;
+        if (muted || !codec_ready) {
+            capped = 0;
+            active = false;
+        }
+        uint32_t bucket = capped / 240U;
 
-        if (radius != last_radius || active != last_active ||
-            codec_ready != last_codec_ready || muted != last_muted ||
-            bucket != last_bucket) {
-            lcd_draw_vad_circle(level, active, codec_ready, muted);
-            last_radius = radius;
+        if (active != last_active || codec_ready != last_codec_ready ||
+            muted != last_muted || bucket != last_bucket) {
+            lcd_draw_mic_status(capped, active, codec_ready, muted);
             last_active = active;
             last_codec_ready = codec_ready;
             last_muted = muted;
@@ -1229,7 +1312,7 @@ void app_main(void)
     // so esptool can talk to the chip on /dev/cu.usbmodem*.
     check_boot_button_for_download();
 
-    ESP_LOGI(TAG, "voxstick boot — fw v0.1.2");
+    ESP_LOGI(TAG, "voxstick boot — fw v0.1.3");
 
     ESP_ERROR_CHECK(i2c_bus_init());
     ESP_LOGI(TAG, "i2c0 up (SDA=%d SCL=%d)", I2C_SDA_PIN, I2C_SCL_PIN);
@@ -1294,7 +1377,7 @@ void app_main(void)
     }
 
 #if !VOX_DEBUG_NO_UAC
-    lcd_draw_vad_circle(0, false, g_codec_ready, g_uac_muted);
+    lcd_draw_mic_status(0, false, g_codec_ready, g_uac_muted || g_imu_mute);
     xTaskCreate(vad_lcd_task, "vad_lcd", 3072, NULL, 4, NULL);
 #endif
 

@@ -38,11 +38,10 @@
 - **手感对**：物理大按键，不是 fn 也不是软件 hotkey。按一下就一下，不会跟系统快捷键打架
 - **隐私可控**：内置 6 轴 IMU。把棒**平放桌面 → 麦克风物理静音**，立起来 → 解禁
 - **板载麦克风**：ES8311 codec + 高灵敏 MEMS 麦克风，远离笔记本风扇噪音
-- **状态屏**：240×135 LCD 实时显示麦克风能量动态圆圈，按键时变色：
-  - 平放 = 红色（已静音）
-  - 立起空闲 = 绿色
-  - 轻按中 = 品红
-  - 长按蓝色后松开 = 发送 Enter
+- **低功耗状态屏**：240×135 LCD 低亮背光 + 小麦克风图标：
+  - 平放或电脑端 mute = 闭麦图标
+  - 立起来 = 开麦图标
+  - 说话时 = 底部小音量条跳动
 - **跨平台**：UAC + HID 是标准协议，Mac / Windows / Linux 都即插即用。Windows 上甚至更顺
   （Mac 上 F19/F18 这些键被系统/输入法软件名单拦了，Windows 没这些限制）
 
@@ -72,7 +71,7 @@
 这个页面用的是 [ESP Web Tools](https://esphome.github.io/esp-web-tools/)，
 会把合并好的 `voxstick-full.bin` 从 `0x0` 一次性写进去。网页安装器源码在
 [`docs/install.html`](docs/install.html)，manifest 在
-[`docs/firmware/v0.1.2/manifest.json`](docs/firmware/v0.1.2/manifest.json)。
+[`docs/firmware/v0.1.3/manifest.json`](docs/firmware/v0.1.3/manifest.json)。
 
 如果 GitHub Pages 还没打开，项目维护者需要到仓库
 `Settings > Pages > Deploy from a branch`，选择 `main` 分支和 `docs/`
@@ -81,7 +80,7 @@
 命令行兜底方式：
 
 ```sh
-curl -LO https://github.com/openbrt/voxstick/releases/download/v0.1.2/voxstick-full.bin
+curl -LO https://github.com/openbrt/voxstick/releases/download/v0.1.3/voxstick-full.bin
 esptool.py --chip esp32s3 -p /dev/cu.usbmodem* write_flash 0x0 voxstick-full.bin
 ```
 

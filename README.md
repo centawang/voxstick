@@ -23,8 +23,8 @@ work — VoiceInk, MacWhisper Pro, or macOS native Dictation.
 
 - **Real keyboard event**, not a global hotkey faked through Accessibility
 - **Dedicated MEMS mic** + ES8311 codec, away from your laptop fan
-- **Status display** — colour-coded boot stages + audio-energy circle on
-  the 240×135 LCD; magenta on tap, blue on long-press latched
+- **Low-power status display** — dim backlight + small mic icon on the
+  240×135 LCD; open mic, muted mic, and a tiny audio meter
 - **IMU privacy mute** — face-up or face-down on a desk = mic muted
 
 ## Hardware
@@ -48,7 +48,7 @@ The installer is powered by
 [ESP Web Tools](https://esphome.github.io/esp-web-tools/) and writes the
 merged `voxstick-full.bin` image at flash offset `0x0`. The static installer
 files live in [`docs/install.html`](docs/install.html), with the firmware
-manifest in [`docs/firmware/v0.1.2/manifest.json`](docs/firmware/v0.1.2/manifest.json).
+manifest in [`docs/firmware/v0.1.3/manifest.json`](docs/firmware/v0.1.3/manifest.json).
 
 If GitHub Pages is not enabled yet, publish this repository from the `docs/`
 folder (`Settings > Pages > Deploy from a branch > main / docs`) and the URL
@@ -57,7 +57,7 @@ above will become live.
 Command-line fallback:
 
 ```sh
-curl -LO https://github.com/openbrt/voxstick/releases/download/v0.1.2/voxstick-full.bin
+curl -LO https://github.com/openbrt/voxstick/releases/download/v0.1.3/voxstick-full.bin
 esptool.py --chip esp32s3 -p /dev/cu.usbmodem* write_flash 0x0 voxstick-full.bin
 ```
 
