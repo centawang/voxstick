@@ -164,6 +164,8 @@ private func drawFlatAsset(to output: URL) throws {
   let height = base.height
   let context = try makeContext(width: width, height: height)
 
+  // Keep the LCD face-up while making the blue front button appear closer to
+  // the viewer. A full 180-degree rotation makes the device look face-down.
   context.saveGState()
   context.translateBy(x: 0, y: CGFloat(height))
   context.scaleBy(x: 1, y: -1)

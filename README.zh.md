@@ -16,9 +16,9 @@
 
 ## 真机和屏幕状态
 
-| 真机外观 | 竖放 = 收音 | 横放 = 闭麦 |
+| 真机外观 | 竖放 = 收音 | 平放 = 闭麦 |
 |---|---|---|
-| <img src="https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1207/K150-stickS3_main-products_02.webp" alt="M5Stack StickS3 真机正面图" width="180"> | <img src="docs/assets/voxstick-upright-live.png" alt="StickS3 竖放，屏幕显示开麦" width="180"> | <img src="docs/assets/voxstick-flat-muted.png" alt="StickS3 横放，屏幕显示闭麦" width="180"> |
+| <img src="https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1207/K150-stickS3_main-products_02.webp" alt="M5Stack StickS3 真机正面图" width="180"> | <img src="docs/assets/voxstick-upright-live.png" alt="StickS3 竖放，屏幕显示开麦" width="180"> | <img src="docs/assets/voxstick-flat-muted.png" alt="StickS3 平放，LCD 屏幕朝上并显示闭麦" width="180"> |
 
 真机图引用自
 [M5Stack StickS3 官方文档](https://docs.m5stack.com/en/core/StickS3)。网页烧录器里已经把 VoxStick 的 LCD 状态画进真机屏幕里，方便用户对刷完后的状态。
