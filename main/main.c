@@ -125,6 +125,7 @@ static const char *TAG = "voxstick";
 #define COL_DIM_RED       0x4000
 #define COL_DIM_CYAN      0x0210
 #define COL_DARK_GRAY     0x0841
+#define COL_LIGHT_GRAY    0xBDF7
 
 // ---- Audio format (must match sdkconfig CONFIG_UAC_*) --------------------
 #define AUDIO_SAMPLE_RATE  16000
@@ -350,10 +351,10 @@ static void lcd_draw_mic_status(uint32_t level, bool active,
 
     const int cx = LCD_W / 2;
     uint16_t mic = codec_ready
-        ? (muted ? COL_DIM_RED : (active ? COL_WHITE : COL_CYAN))
+        ? (muted ? COL_LIGHT_GRAY : (active ? COL_WHITE : COL_CYAN))
         : COL_RED;
     uint16_t accent = codec_ready
-        ? (muted ? COL_RED : (active ? COL_GREEN : COL_DIM_CYAN))
+        ? (muted ? COL_DARK_GRAY : (active ? COL_GREEN : COL_DIM_CYAN))
         : COL_RED;
 
     lcd_fill_rect(0, 34, LCD_W, 184, COL_BLACK);
@@ -386,7 +387,7 @@ static void lcd_draw_mic_status(uint32_t level, bool active,
     }
 
     if (muted) {
-        lcd_draw_thick_line(cx - 32, 154, cx + 32, 58, 6, COL_RED);
+        lcd_draw_thick_line(cx - 28, 150, cx + 28, 62, 4, COL_RED);
     } else if (!codec_ready) {
         lcd_draw_thick_line(cx - 28, 154, cx + 28, 58, 5, COL_RED);
         lcd_draw_thick_line(cx - 28, 58, cx + 28, 154, 5, COL_RED);
@@ -1312,7 +1313,7 @@ void app_main(void)
     // so esptool can talk to the chip on /dev/cu.usbmodem*.
     check_boot_button_for_download();
 
-    ESP_LOGI(TAG, "voxstick boot — fw v0.1.3");
+    ESP_LOGI(TAG, "voxstick boot — fw v0.1.4");
 
     ESP_ERROR_CHECK(i2c_bus_init());
     ESP_LOGI(TAG, "i2c0 up (SDA=%d SCL=%d)", I2C_SDA_PIN, I2C_SCL_PIN);

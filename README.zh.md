@@ -71,7 +71,7 @@
 这个页面用的是 [ESP Web Tools](https://esphome.github.io/esp-web-tools/)，
 会把合并好的 `voxstick-full.bin` 从 `0x0` 一次性写进去。网页安装器源码在
 [`docs/install.html`](docs/install.html)，manifest 在
-[`docs/firmware/v0.1.3/manifest.json`](docs/firmware/v0.1.3/manifest.json)。
+[`docs/firmware/v0.1.4/manifest.json`](docs/firmware/v0.1.4/manifest.json)。
 
 如果 GitHub Pages 还没打开，项目维护者需要到仓库
 `Settings > Pages > Deploy from a branch`，选择 `main` 分支和 `docs/`
@@ -80,7 +80,7 @@
 命令行兜底方式：
 
 ```sh
-curl -LO https://github.com/openbrt/voxstick/releases/download/v0.1.3/voxstick-full.bin
+curl -LO https://github.com/openbrt/voxstick/releases/download/v0.1.4/voxstick-full.bin
 esptool.py --chip esp32s3 -p /dev/cu.usbmodem* write_flash 0x0 voxstick-full.bin
 ```
 
