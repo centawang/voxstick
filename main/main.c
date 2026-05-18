@@ -515,15 +515,15 @@ static esp_err_t pmic_enable_lcd_codec_rail(void)
     //   "PM1_G2 -- L3B Enable, LCD Power On (M5Stack PM1 G2)"
     //
     // The LCD module Vcc and the ES8311 audio codec share an external
-    // L3B-style LDO whose enable pin is wired to M5PM1 GPIO2. After a
-    // truly cold POR M5PM1 powers it on by default, but battery-backed
-    // resets / corrupted PMIC state on this hardware leave G2 LOW, which
-    // is why our screen has been dark and the codec NACKs every I2C
-    // transaction. Configure G2 as a push-pull output and drive HIGH.
+    // L3B-style LDO whose enable pin is wired to M5PM1 GPIO2. The StickS3
+    // schematic names this PYG2_L3B_EN, but the control is active-low in the
+    // public M5PM1 examples: `gpioSetOutput(GPIO_NUM_2, false)` enables the
+    // LCD/MIC/SPK rail. Driving it high leaves the screen dark and the ES8311
+    // silent, which is exactly the failure mode we are fixing here.
     ESP_RETURN_ON_ERROR(pmic_clear_bit(0x16, 1 << 2), TAG, "G2 gpio fn");
     ESP_RETURN_ON_ERROR(pmic_set_bit  (0x10, 1 << 2), TAG, "G2 dir out");
     ESP_RETURN_ON_ERROR(pmic_clear_bit(0x13, 1 << 2), TAG, "G2 push-pull");
-    ESP_RETURN_ON_ERROR(pmic_set_bit  (0x11, 1 << 2), TAG, "G2 out HIGH");
+    ESP_RETURN_ON_ERROR(pmic_clear_bit(0x11, 1 << 2), TAG, "G2 out LOW/L3B on");
 
     // Register 0x09 = I2C_CFG. M5GFX comment:
     //
@@ -558,7 +558,7 @@ static void pmic_dump_regs(const char *label)
 }
 
 // M5StickS3 PMIC init based on M5GFX/M5Unified upstream:
-//   * GPIO2 (PM1_G2) HIGH — enables L3B LDO that powers the LCD module Vcc
+//   * GPIO2 (PM1_G2) LOW — enables L3B LDO that powers the LCD module Vcc
 //     and the ES8311 audio codec rail. Has to come up before any LCD or
 //     codec bring-up is attempted.
 //   * register 0x09 = 0x00 — disables PMIC I2C idle sleep so subsequent
@@ -588,7 +588,7 @@ static esp_err_t pmic_init(void)
 
     pmic_dump_regs("after init");
 
-    ESP_LOGI(TAG, "pmic configured (G2=HIGH/L3B on, G3=LOW/PA off)");
+    ESP_LOGI(TAG, "pmic configured (G2=LOW/L3B on, G3=LOW/PA off)");
     return ESP_OK;
 }
 
@@ -1225,7 +1225,7 @@ void app_main(void)
     // so esptool can talk to the chip on /dev/cu.usbmodem*.
     check_boot_button_for_download();
 
-    ESP_LOGI(TAG, "voxstick boot — fw v0.1");
+    ESP_LOGI(TAG, "voxstick boot — fw v0.1.1");
 
     ESP_ERROR_CHECK(i2c_bus_init());
     ESP_LOGI(TAG, "i2c0 up (SDA=%d SCL=%d)", I2C_SDA_PIN, I2C_SCL_PIN);

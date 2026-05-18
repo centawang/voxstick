@@ -338,6 +338,11 @@ Recommended next step from this state:
   That means LCD/backlight/panel power or panel init is broken independently
   of the USB UAC path. Do not keep tuning VAD colors until LCD power/init is
   proven alive.
+- Follow-up after web installer test: compared the PMIC bring-up with the
+  public M5Stack StickS3/M5PM1 docs. L3B (LCD/MIC/SPK rail) is controlled by
+  PYG2 and the documented enable sequence drives PYG2 output `false` / LOW.
+  Our firmware had driven G2 HIGH, likely disabling the rail. v0.1.1 flips
+  G2 to LOW and updates the web installer to flash that image.
 
 ## Files of interest
 
