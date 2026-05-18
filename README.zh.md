@@ -18,10 +18,10 @@
 
 | 真机外观 | 竖放 = 收音 | 横放 = 闭麦 |
 |---|---|---|
-| <img src="https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1207/K150-stickS3_main-products_02.webp" alt="M5Stack StickS3 真机正面图" width="180"> | <img src="https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1207/K150-stickS3_main-products_07.webp" alt="StickS3 竖放收音姿态" width="180"> | <img src="https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1207/K150-stickS3_main-products_05.webp" alt="StickS3 横放闭麦姿态" width="180"> |
+| <img src="https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1207/K150-stickS3_main-products_02.webp" alt="M5Stack StickS3 真机正面图" width="180"> | <img src="docs/assets/voxstick-upright-live.png" alt="StickS3 竖放，屏幕显示开麦" width="180"> | <img src="docs/assets/voxstick-flat-muted.png" alt="StickS3 横放，屏幕显示闭麦" width="180"> |
 
 真机图引用自
-[M5Stack StickS3 官方文档](https://docs.m5stack.com/en/core/StickS3)。网页烧录器里已经把 VoxStick 的 LCD 状态直接叠到真机屏幕上，方便用户对刷完后的状态。
+[M5Stack StickS3 官方文档](https://docs.m5stack.com/en/core/StickS3)。网页烧录器里已经把 VoxStick 的 LCD 状态画进真机屏幕里，方便用户对刷完后的状态。
 
 ## 这跟微信输入法有什么关系
 

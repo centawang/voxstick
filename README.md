@@ -15,12 +15,12 @@ plug-and-play on macOS / Windows / Linux.
 
 | StickS3 hardware | Upright = live mic | Flat = muted |
 |---|---|---|
-| <img src="https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1207/K150-stickS3_main-products_02.webp" alt="M5Stack StickS3 front product photo" width="180"> | <img src="https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1207/K150-stickS3_main-products_07.webp" alt="StickS3 upright for live microphone posture" width="180"> | <img src="https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1207/K150-stickS3_main-products_05.webp" alt="StickS3 lying flat for muted microphone posture" width="180"> |
+| <img src="https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1207/K150-stickS3_main-products_02.webp" alt="M5Stack StickS3 front product photo" width="180"> | <img src="docs/assets/voxstick-upright-live.png" alt="StickS3 upright with VoxStick live microphone LCD" width="180"> | <img src="docs/assets/voxstick-flat-muted.png" alt="StickS3 lying flat with VoxStick muted microphone LCD" width="180"> |
 
 Product photos are referenced from the official
 [M5Stack StickS3 documentation](https://docs.m5stack.com/en/core/StickS3).
-The web installer overlays VoxStick's LCD states directly onto these device
-photos so users can see what to expect after flashing.
+The web installer uses drawn product images with VoxStick's LCD states placed
+inside the real StickS3 screen.
 
 ## Recommended setup
 
