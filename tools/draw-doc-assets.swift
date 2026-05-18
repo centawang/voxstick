@@ -58,6 +58,21 @@ private func writePNG(_ image: CGImage, to url: URL) throws {
   }
 }
 
+private func rotateHalfTurn(_ image: CGImage) throws -> CGImage {
+  let width = image.width
+  let height = image.height
+  let context = try makeContext(width: width, height: height)
+  context.translateBy(x: CGFloat(width), y: CGFloat(height))
+  context.rotate(by: .pi)
+  context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+  guard let rotated = context.makeImage() else {
+    throw NSError(domain: "voxstick-doc-assets", code: 5, userInfo: [
+      NSLocalizedDescriptionKey: "Could not rotate rendered image"
+    ])
+  }
+  return rotated
+}
+
 private func fillRoundedRect(_ context: CGContext, rect: CGRect, radius: CGFloat, color: CGColor) {
   context.setFillColor(color)
   context.addPath(CGPath(roundedRect: rect, cornerWidth: radius, cornerHeight: radius, transform: nil))
@@ -201,7 +216,7 @@ private func drawFlatAsset(to output: URL) throws {
   context.restoreGState()
 
   guard let image = context.makeImage() else { return }
-  try writePNG(image, to: output)
+  try writePNG(try rotateHalfTurn(image), to: output)
 }
 
 let outputDirectory = URL(fileURLWithPath: CommandLine.arguments.dropFirst().first ?? "docs/assets")
