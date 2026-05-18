@@ -13,13 +13,14 @@ plug-and-play on macOS / Windows / Linux.
 
 ## What it looks like
 
-| StickS3 hardware | Upright = live mic | Flat = muted | LCD states |
-|---|---|---|---|
-| <img src="https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1207/K150-stickS3_main-products_02.webp" alt="M5Stack StickS3 front product photo" width="180"> | <img src="https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1207/K150-stickS3_main-products_07.webp" alt="StickS3 upright for live microphone posture" width="180"> | <img src="https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1207/K150-stickS3_main-products_05.webp" alt="StickS3 lying flat for muted microphone posture" width="180"> | <img src="docs/assets/voxstick-lcd-states.svg" alt="VoxStick LCD open, talking, and muted states" width="240"> |
+| StickS3 hardware | Upright = live mic | Flat = muted |
+|---|---|---|
+| <img src="https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1207/K150-stickS3_main-products_02.webp" alt="M5Stack StickS3 front product photo" width="180"> | <img src="https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1207/K150-stickS3_main-products_07.webp" alt="StickS3 upright for live microphone posture" width="180"> | <img src="https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1207/K150-stickS3_main-products_05.webp" alt="StickS3 lying flat for muted microphone posture" width="180"> |
 
 Product photos are referenced from the official
 [M5Stack StickS3 documentation](https://docs.m5stack.com/en/core/StickS3).
-The LCD drawing is generated from VoxStick's firmware UI.
+The web installer overlays VoxStick's LCD states directly onto these device
+photos so users can see what to expect after flashing.
 
 ## Recommended setup
 
@@ -46,7 +47,7 @@ work — VoiceInk, MacWhisper Pro, or macOS native Dictation.
 
 The easiest path is the browser installer:
 
-1. Open <https://openbrt.github.io/voxstick/install.html> in desktop Chrome
+1. Open <https://openbrt.github.io/voxstick/install-en.html> in desktop Chrome
    or Microsoft Edge.
 2. Plug in the M5Stack StickS3 over USB-C with a data-capable cable.
 3. Hold the side reset/PWR button for about 2 seconds. Release it when the
@@ -59,8 +60,9 @@ The easiest path is the browser installer:
 The installer is powered by
 [ESP Web Tools](https://esphome.github.io/esp-web-tools/) and writes the
 merged `voxstick-full.bin` image at flash offset `0x0`. The static installer
-files live in [`docs/install.html`](docs/install.html), with the firmware
-manifest in [`docs/firmware/v0.1.4/manifest.json`](docs/firmware/v0.1.4/manifest.json).
+files live in [`docs/install-en.html`](docs/install-en.html) and
+[`docs/install.html`](docs/install.html), with the firmware manifest in
+[`docs/firmware/v0.1.4/manifest.json`](docs/firmware/v0.1.4/manifest.json).
 
 If GitHub Pages is not enabled yet, publish this repository from the `docs/`
 folder (`Settings > Pages > Deploy from a branch > main / docs`) and the URL

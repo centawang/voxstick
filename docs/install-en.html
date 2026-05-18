@@ -1,12 +1,12 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>VoxStick 网页烧录器</title>
+    <title>VoxStick Web Installer</title>
     <meta
       name="description"
-      content="直接从 Chrome 或 Edge 把 VoxStick 固件刷进 M5Stack StickS3。"
+      content="Flash VoxStick firmware to an M5Stack StickS3 directly from Chrome or Edge."
     />
     <script
       type="module"
@@ -53,7 +53,7 @@
         color: var(--text);
         font-family:
           Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
-          "Segoe UI", "Microsoft YaHei", sans-serif;
+          "Segoe UI", sans-serif;
         line-height: 1.55;
       }
 
@@ -297,29 +297,29 @@
       <header>
         <div class="topline">
           <div class="eyebrow">M5Stack StickS3 / ESP32-S3</div>
-          <a class="lang" href="./install-en.html">English</a>
+          <a class="lang" href="./install.html">中文</a>
         </div>
-        <h1>VoxStick 网页烧录器</h1>
+        <h1>VoxStick Web Installer</h1>
         <p class="lede">
-          直接从浏览器把 VoxStick 固件刷进 M5Stack StickS3。普通用户不需要安装
-          ESP-IDF、Python 或 esptool。
+          Flash VoxStick firmware to your M5Stack StickS3 directly from the
+          browser. No ESP-IDF, Python, or esptool setup required.
         </p>
       </header>
 
-      <section class="visual-grid" aria-label="VoxStick 真机和姿态">
+      <section class="visual-grid" aria-label="VoxStick device states">
         <figure class="visual-card">
           <img
             class="visual-media"
             src="https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1207/K150-stickS3_main-products_02.webp"
-            alt="M5Stack StickS3 真机外观"
+            alt="M5Stack StickS3 hardware"
           />
-          <figcaption>真机外观</figcaption>
+          <figcaption>StickS3 hardware</figcaption>
         </figure>
         <figure class="visual-card">
           <div class="visual-device visual-device--upright">
             <img
               src="https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1207/K150-stickS3_main-products_07.webp"
-              alt="StickS3 竖放，屏幕显示开麦"
+              alt="StickS3 upright with live microphone LCD"
             />
             <div class="device-screen" aria-hidden="true">
               <svg viewBox="0 0 135 240">
@@ -342,13 +342,13 @@
               </svg>
             </div>
           </div>
-          <figcaption>竖放：开麦收音</figcaption>
+          <figcaption>Upright: live microphone</figcaption>
         </figure>
         <figure class="visual-card">
           <div class="visual-device visual-device--flat">
             <img
               src="https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1207/K150-stickS3_main-products_05.webp"
-              alt="StickS3 横放，屏幕显示闭麦"
+              alt="StickS3 lying flat with muted microphone LCD"
             />
             <div class="device-screen" aria-hidden="true">
               <svg viewBox="0 0 135 240">
@@ -371,54 +371,55 @@
               </svg>
             </div>
           </div>
-          <figcaption>横放：自动闭麦</figcaption>
+          <figcaption>Flat: automatic mute</figcaption>
         </figure>
       </section>
 
       <section class="content-grid">
         <div class="panel flash-panel">
           <ul class="meta">
-            <li>固件 v0.1.4</li>
-            <li>目标 ESP32-S3</li>
-            <li>写入地址 0x0</li>
+            <li>Firmware v0.1.4</li>
+            <li>ESP32-S3</li>
+            <li>Offset 0x0</li>
           </ul>
 
           <esp-web-install-button manifest="./firmware/v0.1.4/manifest.json">
-            <button slot="activate">连接并烧录 VoxStick</button>
-            <span slot="unsupported">请使用桌面版 Chrome 或 Microsoft Edge 打开本页。</span>
-            <span slot="not-allowed">请通过 HTTPS 或 localhost 打开本页。</span>
+            <button slot="activate">Connect and flash VoxStick</button>
+            <span slot="unsupported">Use desktop Chrome or Microsoft Edge.</span>
+            <span slot="not-allowed">Open this page over HTTPS or localhost.</span>
           </esp-web-install-button>
 
           <p class="notice">
-            烧录完成后可能不会自动重启。请拔掉 USB，双击侧边键关机，再插回 USB。
+            The StickS3 may not reboot automatically after flashing. Unplug USB,
+            double-press the side button to power off, then plug USB back in.
           </p>
         </div>
 
         <aside class="panel">
-          <h2>烧录步骤</h2>
+          <h2>Flashing Steps</h2>
           <ol>
-            <li>用桌面版 Chrome 或 Microsoft Edge 打开本页。</li>
-            <li>用能传数据的 USB-C 线连接 StickS3。</li>
-            <li>长按侧边 reset/PWR 键约 2 秒，看到内部绿色 LED 闪烁后松开。</li>
-            <li>点击左侧按钮，选择 StickS3 串口，确认安装。</li>
-            <li>页面提示完成后，拔 USB，双击侧边键关机，再插回 USB。</li>
-            <li>系统输入设备选择 <code>StickS3-Mic</code>。</li>
+            <li>Open this page in desktop Chrome or Microsoft Edge.</li>
+            <li>Connect the StickS3 with a data-capable USB-C cable.</li>
+            <li>Hold the side reset/PWR button for about 2 seconds. Release it when the internal green LED blinks.</li>
+            <li>Click the button on the left, select the StickS3 serial port, and approve the install.</li>
+            <li>When the page reports completion, unplug USB, double-press the side button, then plug USB back in.</li>
+            <li>Select <code>StickS3-Mic</code> as your input device.</li>
           </ol>
         </aside>
       </section>
 
       <section class="panel" style="margin-top: 24px">
-        <h2>故障恢复</h2>
+        <h2>Troubleshooting</h2>
         <ul>
-          <li>看不到串口：换一根 USB-C 数据线，确认浏览器是桌面版 Chrome/Edge。</li>
-          <li>仍然看不到串口：重新长按侧边键约 2 秒，绿色 LED 闪烁后松开。</li>
-          <li>已运行 VoxStick 固件时，也可以执行 <code>bash tools/trigger-download.sh</code> 进入下载模式。</li>
-          <li>命令行兜底：<code>esptool.py --chip esp32s3 write_flash 0x0 voxstick-full.bin</code></li>
+          <li>No port listed: use desktop Chrome/Edge and try another USB-C data cable.</li>
+          <li>Still missing: enter download mode again by holding the side button for about 2 seconds.</li>
+          <li>If VoxStick firmware is already running, <code>bash tools/trigger-download.sh</code> can reboot it into download mode.</li>
+          <li>Command-line fallback: <code>esptool.py --chip esp32s3 write_flash 0x0 voxstick-full.bin</code></li>
         </ul>
         <p class="fine-print">
-          真机图片和按键说明参考
-          <a href="https://docs.m5stack.com/en/core/StickS3">M5Stack StickS3 官方文档</a>。
-          项目源码：
+          Product photos and button behavior reference the official
+          <a href="https://docs.m5stack.com/en/core/StickS3">M5Stack StickS3 documentation</a>.
+          Source:
           <a href="https://github.com/openbrt/voxstick">github.com/openbrt/voxstick</a>
         </p>
       </section>

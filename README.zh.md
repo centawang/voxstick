@@ -16,13 +16,12 @@
 
 ## 真机和屏幕状态
 
-| 真机外观 | 竖放 = 收音 | 横放 = 闭麦 | LCD 状态 |
-|---|---|---|---|
-| <img src="https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1207/K150-stickS3_main-products_02.webp" alt="M5Stack StickS3 真机正面图" width="180"> | <img src="https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1207/K150-stickS3_main-products_07.webp" alt="StickS3 竖放收音姿态" width="180"> | <img src="https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1207/K150-stickS3_main-products_05.webp" alt="StickS3 横放闭麦姿态" width="180"> | <img src="docs/assets/voxstick-lcd-states.svg" alt="VoxStick LCD 开麦、说话、闭麦状态" width="240"> |
+| 真机外观 | 竖放 = 收音 | 横放 = 闭麦 |
+|---|---|---|
+| <img src="https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1207/K150-stickS3_main-products_02.webp" alt="M5Stack StickS3 真机正面图" width="180"> | <img src="https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1207/K150-stickS3_main-products_07.webp" alt="StickS3 竖放收音姿态" width="180"> | <img src="https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1207/K150-stickS3_main-products_05.webp" alt="StickS3 横放闭麦姿态" width="180"> |
 
 真机图引用自
-[M5Stack StickS3 官方文档](https://docs.m5stack.com/en/core/StickS3)，LCD
-画面是 VoxStick 固件绘制状态的文档示意图。
+[M5Stack StickS3 官方文档](https://docs.m5stack.com/en/core/StickS3)。网页烧录器里已经把 VoxStick 的 LCD 状态直接叠到真机屏幕上，方便用户对刷完后的状态。
 
 ## 这跟微信输入法有什么关系
 
@@ -76,13 +75,14 @@
 2. 用能传数据的 USB-C 线插上 M5Stack StickS3
 3. 长按侧边 reset/PWR 键约 2 秒，看到机身内部绿色 LED 闪烁后松开，
    这时已经进入 download mode
-4. 点 **连接并烧录 VoxStick / Connect and flash**，选择 StickS3 的串口
+4. 点 **连接并烧录 VoxStick**，选择 StickS3 的串口
 5. 等烧录完成后拔掉 USB，双击侧边 PWR 键让 StickS3 完全关机，再插回 USB
 6. 固件启动后，再去微信输入法里配置语音输入快捷键
 
 这个页面用的是 [ESP Web Tools](https://esphome.github.io/esp-web-tools/)，
 会把合并好的 `voxstick-full.bin` 从 `0x0` 一次性写进去。网页安装器源码在
-[`docs/install.html`](docs/install.html)，manifest 在
+[`docs/install.html`](docs/install.html)，英文页在
+[`docs/install-en.html`](docs/install-en.html)，manifest 在
 [`docs/firmware/v0.1.4/manifest.json`](docs/firmware/v0.1.4/manifest.json)。
 
 如果 GitHub Pages 还没打开，项目维护者需要到仓库
