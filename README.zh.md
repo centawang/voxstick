@@ -66,12 +66,13 @@
    <https://openbrt.github.io/voxstick/install.html>
 2. 用 USB-C 数据线插上 M5Stack StickS3
 3. 点 **连接并烧录 VoxStick / Connect and flash**，选择 StickS3 的串口
-4. 等烧录完成后拔插一次设备，再去微信输入法里配置语音输入快捷键
+4. 等烧录完成后拔掉 USB，双击侧边 PWR 键让 StickS3 完全关机，再插回 USB
+5. 固件启动后，再去微信输入法里配置语音输入快捷键
 
 这个页面用的是 [ESP Web Tools](https://esphome.github.io/esp-web-tools/)，
 会把合并好的 `voxstick-full.bin` 从 `0x0` 一次性写进去。网页安装器源码在
 [`docs/install.html`](docs/install.html)，manifest 在
-[`docs/firmware/v0.1.1/manifest.json`](docs/firmware/v0.1.1/manifest.json)。
+[`docs/firmware/v0.1.2/manifest.json`](docs/firmware/v0.1.2/manifest.json)。
 
 如果 GitHub Pages 还没打开，项目维护者需要到仓库
 `Settings > Pages > Deploy from a branch`，选择 `main` 分支和 `docs/`
@@ -80,11 +81,15 @@
 命令行兜底方式：
 
 ```sh
-curl -LO https://github.com/openbrt/voxstick/releases/download/v0.1.1/voxstick-full.bin
+curl -LO https://github.com/openbrt/voxstick/releases/download/v0.1.2/voxstick-full.bin
 esptool.py --chip esp32s3 -p /dev/cu.usbmodem* write_flash 0x0 voxstick-full.bin
 ```
 
 Windows 用户把端口换成类似 `COM5` 即可。
+
+注意：StickS3 带电池，后面还有 M5PM1 PMIC，所以网页烧写结束后不一定能可靠
+自动重启。不要长按侧边 PWR 键做恢复，StickS3 上这可能锁住 BOOT 模式；用
+“拔 USB → 双击 PWR 关机 → 再插 USB”最稳。
 
 ## 编译 & 烧录
 

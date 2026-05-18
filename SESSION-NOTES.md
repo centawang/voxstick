@@ -338,11 +338,15 @@ Recommended next step from this state:
   That means LCD/backlight/panel power or panel init is broken independently
   of the USB UAC path. Do not keep tuning VAD colors until LCD power/init is
   proven alive.
-- Follow-up after web installer test: compared the PMIC bring-up with the
-  public M5Stack StickS3/M5PM1 docs. L3B (LCD/MIC/SPK rail) is controlled by
-  PYG2 and the documented enable sequence drives PYG2 output `false` / LOW.
-  Our firmware had driven G2 HIGH, likely disabling the rail. v0.1.1 flips
-  G2 to LOW and updates the web installer to flash that image.
+- Follow-up after web installer test: initially suspected PMIC GPIO2 polarity
+  and published v0.1.1 with G2 LOW. That did not fix the dark screen.
+- User reported v0.1.1 still leaves the display dark while the USB audio
+  device enumerates as `voxstick PTT`, so the app is booting and the problem
+  remains in LCD/PMIC/panel bring-up. Re-checked current M5GFX source: its
+  `board_M5StickS3` path actually drives PMIC GPIO2 HIGH, uses SPI 3-wire
+  mode, and PWM-enables backlight GPIO38. v0.1.2 reverts G2 to HIGH, enables
+  ESP-IDF `sio_mode` for the LCD SPI device, and changes the ready VAD screen
+  from black + tiny cyan dot to full green so a working display is obvious.
 
 ## Files of interest
 

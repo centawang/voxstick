@@ -41,12 +41,14 @@ The easiest path is the browser installer:
 2. Plug in the M5Stack StickS3 over USB-C.
 3. Click **Connect and flash**, choose the StickS3 serial port, and wait for
    the install to finish.
+4. After flashing, unplug USB, double-click the side PWR button to fully power
+   off the StickS3, then plug USB back in.
 
 The installer is powered by
 [ESP Web Tools](https://esphome.github.io/esp-web-tools/) and writes the
 merged `voxstick-full.bin` image at flash offset `0x0`. The static installer
 files live in [`docs/install.html`](docs/install.html), with the firmware
-manifest in [`docs/firmware/v0.1.1/manifest.json`](docs/firmware/v0.1.1/manifest.json).
+manifest in [`docs/firmware/v0.1.2/manifest.json`](docs/firmware/v0.1.2/manifest.json).
 
 If GitHub Pages is not enabled yet, publish this repository from the `docs/`
 folder (`Settings > Pages > Deploy from a branch > main / docs`) and the URL
@@ -55,11 +57,15 @@ above will become live.
 Command-line fallback:
 
 ```sh
-curl -LO https://github.com/openbrt/voxstick/releases/download/v0.1.1/voxstick-full.bin
+curl -LO https://github.com/openbrt/voxstick/releases/download/v0.1.2/voxstick-full.bin
 esptool.py --chip esp32s3 -p /dev/cu.usbmodem* write_flash 0x0 voxstick-full.bin
 ```
 
 On Windows, replace the port with something like `COM5`.
+
+Note: browser flashing may not reliably auto-reboot the StickS3 because the
+board is battery-backed behind the M5PM1 PMIC. Avoid long-pressing the side PWR
+button for recovery; use unplug + double-click PWR, then plug USB back in.
 
 ## Build
 

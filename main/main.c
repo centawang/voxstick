@@ -213,6 +213,12 @@ static esp_err_t lcd_init(void)
         .lcd_param_bits      = 8,
         .spi_mode            = 0,
         .trans_queue_depth   = 10,
+        .flags = {
+            // M5GFX configures the StickS3 LCD bus as 3-wire SPI. Keep DC as
+            // a separate GPIO, but make the SPI device half-duplex single-I/O
+            // so the bus timing matches the known-good M5Stack path.
+            .sio_mode = 1,
+        },
     };
     ESP_RETURN_ON_ERROR(esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)LCD_HOST,
                                                  &io_cfg, &io_handle),
@@ -267,11 +273,11 @@ static void lcd_draw_vad_circle(uint32_t level, bool active,
         radius = VAD_IDLE_RADIUS;
     }
 
-    uint16_t bg = codec_ready ? COL_BLACK : COL_RED;
+    uint16_t bg = codec_ready ? (muted ? COL_DIM_RED : COL_GREEN) : COL_RED;
     uint16_t circle = codec_ready
-        ? (muted ? COL_BLUE : (active ? COL_GREEN : COL_CYAN))
+        ? (muted ? COL_BLUE : (active ? COL_WHITE : COL_CYAN))
         : COL_WHITE;
-    uint16_t core = codec_ready ? (active ? COL_WHITE : COL_DIM_CYAN) : COL_BLACK;
+    uint16_t core = codec_ready ? (active ? COL_GREEN : COL_BLACK) : COL_BLACK;
 
     const int cx = LCD_W / 2;
     const int cy = LCD_H / 2;
@@ -515,15 +521,13 @@ static esp_err_t pmic_enable_lcd_codec_rail(void)
     //   "PM1_G2 -- L3B Enable, LCD Power On (M5Stack PM1 G2)"
     //
     // The LCD module Vcc and the ES8311 audio codec share an external
-    // L3B-style LDO whose enable pin is wired to M5PM1 GPIO2. The StickS3
-    // schematic names this PYG2_L3B_EN, but the control is active-low in the
-    // public M5PM1 examples: `gpioSetOutput(GPIO_NUM_2, false)` enables the
-    // LCD/MIC/SPK rail. Driving it high leaves the screen dark and the ES8311
-    // silent, which is exactly the failure mode we are fixing here.
+    // L3B-style LDO whose enable pin is wired to M5PM1 GPIO2. M5GFX's
+    // board_M5StickS3 path drives this output HIGH before initializing the
+    // panel; mirror that sequence exactly here.
     ESP_RETURN_ON_ERROR(pmic_clear_bit(0x16, 1 << 2), TAG, "G2 gpio fn");
     ESP_RETURN_ON_ERROR(pmic_set_bit  (0x10, 1 << 2), TAG, "G2 dir out");
     ESP_RETURN_ON_ERROR(pmic_clear_bit(0x13, 1 << 2), TAG, "G2 push-pull");
-    ESP_RETURN_ON_ERROR(pmic_clear_bit(0x11, 1 << 2), TAG, "G2 out LOW/L3B on");
+    ESP_RETURN_ON_ERROR(pmic_set_bit  (0x11, 1 << 2), TAG, "G2 out HIGH/L3B on");
 
     // Register 0x09 = I2C_CFG. M5GFX comment:
     //
@@ -558,7 +562,7 @@ static void pmic_dump_regs(const char *label)
 }
 
 // M5StickS3 PMIC init based on M5GFX/M5Unified upstream:
-//   * GPIO2 (PM1_G2) LOW — enables L3B LDO that powers the LCD module Vcc
+//   * GPIO2 (PM1_G2) HIGH — enables L3B LDO that powers the LCD module Vcc
 //     and the ES8311 audio codec rail. Has to come up before any LCD or
 //     codec bring-up is attempted.
 //   * register 0x09 = 0x00 — disables PMIC I2C idle sleep so subsequent
@@ -588,7 +592,7 @@ static esp_err_t pmic_init(void)
 
     pmic_dump_regs("after init");
 
-    ESP_LOGI(TAG, "pmic configured (G2=LOW/L3B on, G3=LOW/PA off)");
+    ESP_LOGI(TAG, "pmic configured (G2=HIGH/L3B on, G3=LOW/PA off)");
     return ESP_OK;
 }
 
@@ -1225,7 +1229,7 @@ void app_main(void)
     // so esptool can talk to the chip on /dev/cu.usbmodem*.
     check_boot_button_for_download();
 
-    ESP_LOGI(TAG, "voxstick boot — fw v0.1.1");
+    ESP_LOGI(TAG, "voxstick boot — fw v0.1.2");
 
     ESP_ERROR_CHECK(i2c_bus_init());
     ESP_LOGI(TAG, "i2c0 up (SDA=%d SCL=%d)", I2C_SDA_PIN, I2C_SCL_PIN);

@@ -216,12 +216,12 @@
       <section class="installer" aria-label="VoxStick firmware installer">
         <div class="panel flash-panel">
           <ul class="meta">
-            <li>Firmware v0.1.1</li>
+            <li>Firmware v0.1.2</li>
             <li>Target ESP32-S3</li>
             <li>Image offset 0x0</li>
           </ul>
 
-          <esp-web-install-button manifest="./firmware/v0.1.1/manifest.json">
+          <esp-web-install-button manifest="./firmware/v0.1.2/manifest.json">
             <button slot="activate">连接并烧录 VoxStick / Connect and flash</button>
             <span slot="unsupported">
               请使用桌面版 Chrome 或 Microsoft Edge 打开本页。
@@ -232,8 +232,9 @@
           </esp-web-install-button>
 
           <p class="notice">
-            烧录会写入完整固件镜像。Keep the StickS3 connected until the
-            installer says flashing is complete.
+            烧录完成后 StickS3 不一定会自动重启。Wait until flashing is complete,
+            then unplug USB, double-click the side PWR button to fully power off,
+            and plug USB back in.
           </p>
         </div>
 
@@ -243,7 +244,8 @@
             <li>Use desktop Chrome or Edge. Safari and iOS browsers do not support Web Serial.</li>
             <li>Plug the M5Stack StickS3 into USB-C.</li>
             <li>Click the flash button and select the StickS3 serial port.</li>
-            <li>After flashing, unplug/replug the stick and select <code>StickS3-Mic</code> as the input device if needed.</li>
+            <li>After flashing, unplug USB, double-click the side PWR button, then plug USB back in.</li>
+            <li>When the firmware boots, select <code>StickS3-Mic</code> as the input device if needed.</li>
           </ol>
         </aside>
       </section>
@@ -252,6 +254,7 @@
         <h2>Troubleshooting / 故障恢复</h2>
         <ul>
           <li>If the port does not appear, try another data-capable USB-C cable or reconnect while holding BtnA.</li>
+          <li>Do not long-press the side PWR button for recovery; on StickS3 that can latch BOOT mode. Use unplug + double-click PWR instead.</li>
           <li>If you already have VoxStick firmware running, <code>bash tools/trigger-download.sh</code> can reboot it into ROM download mode.</li>
           <li>Command-line fallback: <code>esptool.py --chip esp32s3 write_flash 0x0 voxstick-full.bin</code>.</li>
         </ul>
