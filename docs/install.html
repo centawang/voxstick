@@ -98,6 +98,34 @@
         align-items: start;
       }
 
+      .visual-grid {
+        display: grid;
+        gap: 16px;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        margin: 0 0 24px;
+      }
+
+      .visual-card {
+        margin: 0;
+        min-width: 0;
+      }
+
+      .visual-card img {
+        display: block;
+        width: 100%;
+        aspect-ratio: 1 / 1;
+        object-fit: contain;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #ffffff;
+      }
+
+      .visual-card figcaption {
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+
       .panel {
         background: var(--panel);
         border: 1px solid var(--line);
@@ -212,6 +240,16 @@
         .installer {
           grid-template-columns: 1fr;
         }
+
+        .visual-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 460px) {
+        .visual-grid {
+          grid-template-columns: 1fr;
+        }
       }
     </style>
   </head>
@@ -226,6 +264,37 @@
           esptool.
         </p>
       </header>
+
+      <section class="visual-grid" aria-label="VoxStick device and LCD states">
+        <figure class="visual-card">
+          <img
+            src="https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1207/K150-stickS3_main-products_02.webp"
+            alt="M5Stack StickS3 front product photo"
+          />
+          <figcaption>真机外观 / StickS3 hardware</figcaption>
+        </figure>
+        <figure class="visual-card">
+          <img
+            src="https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1207/K150-stickS3_main-products_07.webp"
+            alt="M5Stack StickS3 upright front view for live microphone posture"
+          />
+          <figcaption>竖放收音 / Upright = live mic</figcaption>
+        </figure>
+        <figure class="visual-card">
+          <img
+            src="https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1207/K150-stickS3_main-products_05.webp"
+            alt="M5Stack StickS3 lying flat for muted microphone posture"
+          />
+          <figcaption>横放闭麦 / Flat = muted</figcaption>
+        </figure>
+        <figure class="visual-card">
+          <img
+            src="./assets/voxstick-lcd-states.svg"
+            alt="VoxStick LCD open, talking, and muted status drawings"
+          />
+          <figcaption>LCD 状态 / LCD status drawings</figcaption>
+        </figure>
+      </section>
 
       <section class="installer" aria-label="VoxStick firmware installer">
         <div class="panel flash-panel">
@@ -315,7 +384,7 @@
           <a href="https://github.com/openbrt/voxstick">github.com/openbrt/voxstick</a>
         </p>
         <p class="fine-print source-list">
-          StickS3 button and download-mode wording follows the official
+          Product photos and StickS3 button/download-mode wording follow the official
           <a href="https://docs.m5stack.com/en/core/StickS3">M5Stack StickS3 product documentation</a>
           and
           <a href="https://docs.m5stack.com/en/arduino/m5sticks3/program">StickS3 Arduino upload guide</a>.

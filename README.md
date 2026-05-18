@@ -11,6 +11,16 @@ voice input, long-press to send (Enter). Lay the stick flat on a desk
 and the IMU mutes the mic automatically. No drivers, no companion app,
 plug-and-play on macOS / Windows / Linux.
 
+## What it looks like
+
+| StickS3 hardware | Upright = live mic | Flat = muted | LCD states |
+|---|---|---|---|
+| <img src="https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1207/K150-stickS3_main-products_02.webp" alt="M5Stack StickS3 front product photo" width="180"> | <img src="https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1207/K150-stickS3_main-products_07.webp" alt="StickS3 upright for live microphone posture" width="180"> | <img src="https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1207/K150-stickS3_main-products_05.webp" alt="StickS3 lying flat for muted microphone posture" width="180"> | <img src="docs/assets/voxstick-lcd-states.svg" alt="VoxStick LCD open, talking, and muted states" width="240"> |
+
+Product photos are referenced from the official
+[M5Stack StickS3 documentation](https://docs.m5stack.com/en/core/StickS3).
+The LCD drawing is generated from VoxStick's firmware UI.
+
 ## Recommended setup
 
 For Chinese-with-mixed-English voice input we use **WeChat 输入法**
@@ -38,10 +48,12 @@ The easiest path is the browser installer:
 
 1. Open <https://openbrt.github.io/voxstick/install.html> in desktop Chrome
    or Microsoft Edge.
-2. Plug in the M5Stack StickS3 over USB-C.
-3. Click **Connect and flash**, choose the StickS3 serial port, and wait for
+2. Plug in the M5Stack StickS3 over USB-C with a data-capable cable.
+3. Hold the side reset/PWR button for about 2 seconds. Release it when the
+   internal green LED blinks; the StickS3 is now in download mode.
+4. Click **Connect and flash**, choose the StickS3 serial port, and wait for
    the install to finish.
-4. After flashing, unplug USB, double-click the side PWR button to fully power
+5. After flashing, unplug USB, double-click the side PWR button to fully power
    off the StickS3, then plug USB back in.
 
 The installer is powered by
@@ -64,8 +76,9 @@ esptool.py --chip esp32s3 -p /dev/cu.usbmodem* write_flash 0x0 voxstick-full.bin
 On Windows, replace the port with something like `COM5`.
 
 Note: browser flashing may not reliably auto-reboot the StickS3 because the
-board is battery-backed behind the M5PM1 PMIC. Avoid long-pressing the side PWR
-button for recovery; use unplug + double-click PWR, then plug USB back in.
+board is battery-backed behind the M5PM1 PMIC. The official StickS3 button
+operations are long press = download mode, double press = power off, and single
+press = power on.
 
 ## Build
 
