@@ -164,16 +164,20 @@ private func drawFlatAsset(to output: URL) throws {
   let height = base.height
   let context = try makeContext(width: width, height: height)
 
+  context.saveGState()
+  context.translateBy(x: 0, y: CGFloat(height))
+  context.scaleBy(x: 1, y: -1)
   context.draw(base, in: CGRect(x: 0, y: 0, width: width, height: height))
+  context.restoreGState()
 
   context.saveGState()
   context.translateBy(x: 0, y: CGFloat(height))
   context.scaleBy(x: 1, y: -1)
 
-  let topLeft = Point(x: 466, y: 452)
-  let topRight = Point(x: 764, y: 423)
-  let bottomRight = Point(x: 891, y: 558)
-  let bottomLeft = Point(x: 606, y: 589)
+  let topLeft = Point(x: 606, y: 611)
+  let topRight = Point(x: 891, y: 642)
+  let bottomRight = Point(x: 764, y: 777)
+  let bottomLeft = Point(x: 466, y: 748)
   let screenPolygon = [topLeft, topRight, bottomRight, bottomLeft]
 
   fillPolygon(
