@@ -9,7 +9,7 @@ private struct Point {
 }
 
 private let uprightURL = URL(string: "https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1207/K150-stickS3_main-products_07.webp")!
-private let flatURL = URL(string: "https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1207/K150-stickS3_main-products_05.webp")!
+private let flatURL = URL(string: "https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1207/K150-stickS3_main-products_02.webp")!
 
 private func loadImage(from url: URL) throws -> CGImage {
   let data = try Data(contentsOf: url)
@@ -40,6 +40,85 @@ private func makeContext(width: Int, height: Int) throws -> CGContext {
     ])
   }
   return context
+}
+
+private func imageByRemovingWhiteBackground(_ image: CGImage) throws -> CGImage {
+  let width = image.width
+  let height = image.height
+  let bytesPerRow = width * 4
+  let bitmapInfo = CGBitmapInfo.byteOrder32Big.rawValue | CGImageAlphaInfo.premultipliedLast.rawValue
+  let colorSpace = CGColorSpaceCreateDeviceRGB()
+  var data = Data(repeating: 0, count: bytesPerRow * height)
+
+  try data.withUnsafeMutableBytes { rawBuffer in
+    guard let baseAddress = rawBuffer.baseAddress else {
+      throw NSError(domain: "voxstick-doc-assets", code: 5, userInfo: [
+        NSLocalizedDescriptionKey: "Could not allocate image buffer"
+      ])
+    }
+    guard let context = CGContext(
+      data: baseAddress,
+      width: width,
+      height: height,
+      bitsPerComponent: 8,
+      bytesPerRow: bytesPerRow,
+      space: colorSpace,
+      bitmapInfo: bitmapInfo
+    ) else {
+      throw NSError(domain: "voxstick-doc-assets", code: 6, userInfo: [
+        NSLocalizedDescriptionKey: "Could not create matte CGContext"
+      ])
+    }
+
+    context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+
+    let pixels = rawBuffer.bindMemory(to: UInt8.self)
+    for offset in stride(from: 0, to: pixels.count, by: 4) {
+      let red = Int(pixels[offset])
+      let green = Int(pixels[offset + 1])
+      let blue = Int(pixels[offset + 2])
+      let maxChannel = max(red, green, blue)
+      let minChannel = min(red, green, blue)
+      let isNeutralWhite = maxChannel - minChannel < 16
+
+      guard isNeutralWhite, minChannel > 228 else { continue }
+
+      let opacity: CGFloat
+      if minChannel >= 248 {
+        opacity = 0
+      } else {
+        opacity = CGFloat(248 - minChannel) / 20
+      }
+
+      pixels[offset] = UInt8(CGFloat(red) * opacity)
+      pixels[offset + 1] = UInt8(CGFloat(green) * opacity)
+      pixels[offset + 2] = UInt8(CGFloat(blue) * opacity)
+      pixels[offset + 3] = UInt8(CGFloat(pixels[offset + 3]) * opacity)
+    }
+  }
+
+  guard
+    let provider = CGDataProvider(data: data as CFData),
+    let keyedImage = CGImage(
+      width: width,
+      height: height,
+      bitsPerComponent: 8,
+      bitsPerPixel: 32,
+      bytesPerRow: bytesPerRow,
+      space: colorSpace,
+      bitmapInfo: CGBitmapInfo(rawValue: bitmapInfo),
+      provider: provider,
+      decode: nil,
+      shouldInterpolate: true,
+      intent: .defaultIntent
+    )
+  else {
+    throw NSError(domain: "voxstick-doc-assets", code: 7, userInfo: [
+      NSLocalizedDescriptionKey: "Could not create keyed image"
+    ])
+  }
+
+  return keyedImage
 }
 
 private func writePNG(_ image: CGImage, to url: URL) throws {
@@ -78,6 +157,75 @@ private func fillPolygon(_ context: CGContext, _ points: [Point], color: CGColor
   context.setFillColor(color)
   addPolygon(context, points)
   context.fillPath()
+}
+
+private func drawSceneBackground(_ context: CGContext, width: Int, height: Int, horizonY: CGFloat) {
+  let canvas = CGRect(x: 0, y: 0, width: width, height: height)
+  context.setFillColor(CGColor(red: 0.988, green: 0.992, blue: 0.996, alpha: 1))
+  context.fill(canvas)
+
+  context.saveGState()
+  context.translateBy(x: 0, y: CGFloat(height))
+  context.scaleBy(x: 1, y: -1)
+
+  let floor = [
+    Point(x: 70, y: horizonY),
+    Point(x: CGFloat(width - 70), y: horizonY),
+    Point(x: CGFloat(width), y: CGFloat(height)),
+    Point(x: 0, y: CGFloat(height))
+  ]
+  fillPolygon(
+    context,
+    floor,
+    color: CGColor(red: 0.944, green: 0.962, blue: 0.976, alpha: 1)
+  )
+
+  context.setStrokeColor(CGColor(red: 0.832, green: 0.872, blue: 0.910, alpha: 1))
+  context.setLineWidth(2)
+  context.move(to: CGPoint(x: 70, y: horizonY))
+  context.addLine(to: CGPoint(x: CGFloat(width - 70), y: horizonY))
+  context.strokePath()
+
+  context.setStrokeColor(CGColor(red: 0.830, green: 0.875, blue: 0.910, alpha: 0.65))
+  context.setLineWidth(1)
+  let vanishingPoint = CGPoint(x: CGFloat(width) * 0.5, y: horizonY)
+  for x in stride(from: -120, through: width + 120, by: 180) {
+    context.move(to: vanishingPoint)
+    context.addLine(to: CGPoint(x: x, y: height))
+  }
+  for y in stride(from: Int(horizonY) + 98, through: height + 20, by: 112) {
+    let lineY = CGFloat(y)
+    let inset = CGFloat(y - Int(horizonY)) * 0.22
+    context.move(to: CGPoint(x: max(CGFloat(0), CGFloat(70) - inset), y: lineY))
+    context.addLine(to: CGPoint(x: min(CGFloat(width), CGFloat(width - 70) + inset), y: lineY))
+  }
+  context.strokePath()
+
+  context.restoreGState()
+}
+
+private func drawSoftEllipse(
+  _ context: CGContext,
+  center: CGPoint,
+  size: CGSize,
+  angle: CGFloat,
+  alpha: CGFloat
+) {
+  context.saveGState()
+  context.translateBy(x: center.x, y: center.y)
+  context.rotate(by: angle)
+  for index in 0..<6 {
+    let progress = CGFloat(index) / 6
+    let rect = CGRect(
+      x: -size.width * (1 + progress * 0.20) / 2,
+      y: -size.height * (1 + progress * 0.75) / 2,
+      width: size.width * (1 + progress * 0.20),
+      height: size.height * (1 + progress * 0.75)
+    )
+    context.setFillColor(CGColor(red: 0.102, green: 0.137, blue: 0.180, alpha: alpha * (1 - progress) * 0.24))
+    context.fillEllipse(in: rect)
+  }
+  context.restoreGState()
 }
 
 private func drawRects(_ context: CGContext, rects: [CGRect]) {
@@ -128,10 +276,23 @@ private func drawScreenContent(_ context: CGContext, muted: Bool) {
 }
 
 private func drawUprightAsset(to output: URL) throws {
-  let base = try loadImage(from: uprightURL)
+  let base = try imageByRemovingWhiteBackground(loadImage(from: uprightURL))
   let width = base.width
   let height = base.height
   let context = try makeContext(width: width, height: height)
+
+  drawSceneBackground(context, width: width, height: height, horizonY: 835)
+  context.saveGState()
+  context.translateBy(x: 0, y: CGFloat(height))
+  context.scaleBy(x: 1, y: -1)
+  drawSoftEllipse(
+    context,
+    center: CGPoint(x: 600, y: 1014),
+    size: CGSize(width: 390, height: 54),
+    angle: 0,
+    alpha: 1
+  )
+  context.restoreGState()
 
   context.draw(base, in: CGRect(x: 0, y: 0, width: width, height: height))
 
@@ -159,23 +320,37 @@ private func drawUprightAsset(to output: URL) throws {
 }
 
 private func drawFlatAsset(to output: URL) throws {
-  let base = try loadImage(from: flatURL)
+  let base = try imageByRemovingWhiteBackground(loadImage(from: flatURL))
   let width = base.width
   let height = base.height
   let context = try makeContext(width: width, height: height)
 
-  // Keep the official screen-up perspective. The blue button stays on the far
-  // side because flipping the source image makes the device read as face-down.
+  drawSceneBackground(context, width: width, height: height, horizonY: 770)
+  context.saveGState()
+  context.translateBy(x: 0, y: CGFloat(height))
+  context.scaleBy(x: 1, y: -1)
+  drawSoftEllipse(
+    context,
+    center: CGPoint(x: 610, y: 826),
+    size: CGSize(width: 540, height: 86),
+    angle: 0.72,
+    alpha: 0.35
+  )
+  context.restoreGState()
+
+  // Use the official three-quarter photo for the muted tabletop state. It reads
+  // as screen-up with the large button toward the viewer, unlike the low front
+  // product angle whose front/back direction is easy to misread.
   context.draw(base, in: CGRect(x: 0, y: 0, width: width, height: height))
 
   context.saveGState()
   context.translateBy(x: 0, y: CGFloat(height))
   context.scaleBy(x: 1, y: -1)
 
-  let topLeft = Point(x: 466, y: 452)
-  let topRight = Point(x: 764, y: 423)
-  let bottomRight = Point(x: 891, y: 558)
-  let bottomLeft = Point(x: 606, y: 589)
+  let topLeft = Point(x: 377, y: 397)
+  let topRight = Point(x: 547, y: 314)
+  let bottomRight = Point(x: 722, y: 574)
+  let bottomLeft = Point(x: 544, y: 662)
   let screenPolygon = [topLeft, topRight, bottomRight, bottomLeft]
 
   fillPolygon(
@@ -188,8 +363,8 @@ private func drawFlatAsset(to output: URL) throws {
   addPolygon(context, screenPolygon)
   context.clip()
 
-  let xAxis = CGVector(dx: bottomLeft.x - topLeft.x, dy: bottomLeft.y - topLeft.y)
-  let yAxis = CGVector(dx: topRight.x - topLeft.x, dy: topRight.y - topLeft.y)
+  let xAxis = CGVector(dx: topRight.x - topLeft.x, dy: topRight.y - topLeft.y)
+  let yAxis = CGVector(dx: bottomLeft.x - topLeft.x, dy: bottomLeft.y - topLeft.y)
   context.concatenate(CGAffineTransform(
     a: xAxis.dx / 135,
     b: xAxis.dy / 135,
