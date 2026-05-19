@@ -16,7 +16,7 @@
 
 ## 真机和屏幕状态
 
-| 真机外观 | 竖放 = 收音 | 平放 = 闭麦 |
+| 真机外观 | 竖放 = 收音 | 屏幕朝上平放 = 闭麦 |
 |---|---|---|
 | <img src="https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1207/K150-stickS3_main-products_02.webp" alt="M5Stack StickS3 真机正面图" width="180"> | <img src="docs/assets/voxstick-upright-live.png" alt="StickS3 竖放，屏幕显示开麦" width="180"> | <img src="docs/assets/voxstick-flat-muted.png" alt="StickS3 平放，LCD 屏幕朝上并显示闭麦" width="180"> |
 
@@ -45,10 +45,10 @@
 ## 关键卖点
 
 - **手感对**：物理大按键，不是 fn 也不是软件 hotkey。按一下就一下，不会跟系统快捷键打架
-- **隐私可控**：内置 6 轴 IMU。把棒**平放桌面 → 麦克风物理静音**，立起来 → 解禁
+- **隐私可控**：内置 6 轴 IMU。把棒**屏幕朝上平放桌面 → 麦克风物理静音**，立起来 → 解禁
 - **板载麦克风**：ES8311 codec + 高灵敏 MEMS 麦克风，远离笔记本风扇噪音
 - **低功耗状态屏**：240×135 LCD 低亮背光 + 小麦克风图标：
-  - 平放或电脑端 mute = 闭麦图标
+  - 屏幕朝上平放或电脑端 mute = 闭麦图标
   - 立起来 = 开麦图标
   - 说话时 = 底部小音量条跳动
 - **跨平台**：UAC + HID 是标准协议，Mac / Windows / Linux 都即插即用。Windows 上甚至更顺

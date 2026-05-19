@@ -7,9 +7,9 @@ M5Stack StickS3 (ESP32-S3).
 
 The stick is a single composite USB device that hosts see as **both** a
 16 kHz microphone *and* a HID keyboard. Tap the front button to toggle
-voice input, long-press to send (Enter). Lay the stick flat on a desk
-and the IMU mutes the mic automatically. No drivers, no companion app,
-plug-and-play on macOS / Windows / Linux.
+voice input, long-press to send (Enter). Lay the stick flat on a desk with
+the screen facing up and the IMU mutes the mic automatically. No drivers,
+no companion app, plug-and-play on macOS / Windows / Linux.
 
 ## What it looks like
 
