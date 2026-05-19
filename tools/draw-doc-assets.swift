@@ -9,7 +9,7 @@ private struct Point {
 }
 
 private let uprightURL = URL(string: "https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1207/K150-stickS3_main-products_07.webp")!
-private let flatURL = URL(string: "https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1207/K150-stickS3_main-products_02.webp")!
+private let flatURL = URL(string: "https://shop.m5stack.com/cdn/shop/files/4_e5191b04-4dbf-4212-af94-1de732541a92_1200x1200.webp?v=1770176878")!
 
 private func loadImage(from url: URL) throws -> CGImage {
   let data = try Data(contentsOf: url)
@@ -228,6 +228,50 @@ private func drawSoftEllipse(
   context.restoreGState()
 }
 
+private func eraseFlatProductAnnotations(_ context: CGContext) {
+  context.saveGState()
+  context.translateBy(x: 0, y: 1200)
+  context.scaleBy(x: 1, y: -1)
+
+  let white = CGColor(red: 1, green: 1, blue: 1, alpha: 1)
+  context.setFillColor(white)
+  context.setStrokeColor(white)
+  context.setLineWidth(52)
+  context.setLineCap(.round)
+  context.setLineJoin(.round)
+
+  let textMasks = [
+    CGRect(x: 100, y: 740, width: 280, height: 140),
+    CGRect(x: 910, y: 650, width: 260, height: 190),
+    CGRect(x: 750, y: 850, width: 300, height: 190)
+  ]
+  for mask in textMasks {
+    context.fill(mask)
+  }
+
+  context.move(to: CGPoint(x: 132, y: 520))
+  context.addLine(to: CGPoint(x: 540, y: 1010))
+  context.move(to: CGPoint(x: 942, y: 682))
+  context.addLine(to: CGPoint(x: 942, y: 804))
+  context.move(to: CGPoint(x: 650, y: 1012))
+  context.addLine(to: CGPoint(x: 944, y: 834))
+  context.strokePath()
+
+  let arrowMasks = [
+    CGRect(x: 96, y: 488, width: 74, height: 78),
+    CGRect(x: 506, y: 970, width: 76, height: 78),
+    CGRect(x: 902, y: 650, width: 78, height: 64),
+    CGRect(x: 902, y: 778, width: 78, height: 64),
+    CGRect(x: 612, y: 974, width: 78, height: 74),
+    CGRect(x: 902, y: 796, width: 78, height: 78)
+  ]
+  for mask in arrowMasks {
+    context.fill(mask)
+  }
+
+  context.restoreGState()
+}
+
 private func drawRects(_ context: CGContext, rects: [CGRect]) {
   for rect in rects {
     context.fill(rect)
@@ -320,44 +364,25 @@ private func drawUprightAsset(to output: URL) throws {
 }
 
 private func drawFlatAsset(to output: URL) throws {
-  let base = try imageByRemovingWhiteBackground(loadImage(from: flatURL))
+  let base = try loadImage(from: flatURL)
   let width = base.width
   let height = base.height
   let context = try makeContext(width: width, height: height)
 
-  drawSceneBackground(context, width: width, height: height, horizonY: 770)
-  context.saveGState()
-  context.translateBy(x: 0, y: CGFloat(height))
-  context.scaleBy(x: 1, y: -1)
-  drawSoftEllipse(
-    context,
-    center: CGPoint(x: 610, y: 826),
-    size: CGSize(width: 540, height: 86),
-    angle: 0.72,
-    alpha: 0.35
-  )
-  context.restoreGState()
-
-  // Use the official three-quarter photo for the muted tabletop state. It reads
-  // as screen-up with the large button toward the viewer, unlike the low front
-  // product angle whose front/back direction is easy to misread.
+  // Use the official three-quarter photo as-is so the natural tabletop shadow
+  // stays intact. Only the LCD content is replaced with the VoxStick state.
   context.draw(base, in: CGRect(x: 0, y: 0, width: width, height: height))
+  eraseFlatProductAnnotations(context)
 
   context.saveGState()
   context.translateBy(x: 0, y: CGFloat(height))
   context.scaleBy(x: 1, y: -1)
 
-  let topLeft = Point(x: 377, y: 397)
-  let topRight = Point(x: 547, y: 314)
-  let bottomRight = Point(x: 722, y: 574)
-  let bottomLeft = Point(x: 544, y: 662)
+  let topLeft = Point(x: 280, y: 378)
+  let topRight = Point(x: 490, y: 264)
+  let bottomRight = Point(x: 680, y: 536)
+  let bottomLeft = Point(x: 465, y: 653)
   let screenPolygon = [topLeft, topRight, bottomRight, bottomLeft]
-
-  fillPolygon(
-    context,
-    screenPolygon,
-    color: CGColor(red: 0.008, green: 0.024, blue: 0.090, alpha: 1)
-  )
 
   context.saveGState()
   addPolygon(context, screenPolygon)
