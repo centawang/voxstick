@@ -67,7 +67,7 @@ The installer is powered by
 merged `voxstick-full.bin` image at flash offset `0x0`. The static installer
 files live in [`docs/install-en.html`](docs/install-en.html) and
 [`docs/install.html`](docs/install.html), with the firmware manifest in
-[`docs/firmware/v0.1.4/manifest.json`](docs/firmware/v0.1.4/manifest.json).
+[`docs/firmware/v0.1.5/manifest.json`](docs/firmware/v0.1.5/manifest.json).
 
 If GitHub Pages is not enabled yet, publish this repository from the `docs/`
 folder (`Settings > Pages > Deploy from a branch > main / docs`) and the URL
@@ -76,7 +76,7 @@ above will become live.
 Command-line fallback:
 
 ```sh
-curl -LO https://github.com/openbrt/voxstick/releases/download/v0.1.4/voxstick-full.bin
+curl -LO https://github.com/openbrt/voxstick/releases/download/v0.1.5/voxstick-full.bin
 esptool.py --chip esp32s3 -p /dev/cu.usbmodem* write_flash 0x0 voxstick-full.bin
 ```
 

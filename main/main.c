@@ -1230,8 +1230,8 @@ static void check_boot_button_for_download(void)
 }
 
 // Tap-vs-long-press disambiguator for BtnA.
-//   tap   (< BTN_LONG_PRESS_MS) -> momentary F18 press (= toggle voice
-//                                  recognition in WeType 免提模式)
+//   tap   (< BTN_LONG_PRESS_MS) -> momentary Ctrl+F12 press (= toggle voice
+//                                  recognition in WeType hands-free mode)
 //   hold  (≥ BTN_LONG_PRESS_MS) -> momentary Enter press (= send the
 //                                  dictated message)
 // We only emit the HID report on RELEASE, after we know which it was.
@@ -1313,7 +1313,7 @@ void app_main(void)
     // so esptool can talk to the chip on /dev/cu.usbmodem*.
     check_boot_button_for_download();
 
-    ESP_LOGI(TAG, "voxstick boot — fw v0.1.4");
+    ESP_LOGI(TAG, "voxstick boot — fw v0.1.5");
 
     ESP_ERROR_CHECK(i2c_bus_init());
     ESP_LOGI(TAG, "i2c0 up (SDA=%d SCL=%d)", I2C_SDA_PIN, I2C_SCL_PIN);

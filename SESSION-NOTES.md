@@ -348,6 +348,120 @@ Recommended next step from this state:
   ESP-IDF `sio_mode` for the LCD SPI device, and changes the ready VAD screen
   from black + tiny cyan dot to full green so a working display is obvious.
 
+### 2026-05-24 continuation
+
+Current working directory has moved to:
+
+`/Users/csc/wd/vibe_projects/voxstick`
+
+Repository state:
+
+- `main` is clean and synced with `origin/main`.
+- Latest pushed commit: `b359aed Use Ctrl+F12 for WeType shortcut`.
+- The commit changes the BtnA tap HID shortcut from Right Cmd + F12 to
+  `Ctrl+F12`, so the same gesture is easier to explain on both Windows and
+  macOS.
+- Updated docs:
+  - `README.md`
+  - `README.zh.md`
+  - `docs/install.html`
+  - `docs/install-en.html`
+- The install docs now split the setup object clearly:
+  - computer OS: choose `StickS3-Mic` as the sound input
+  - WeType / dictation app: bind the voice-input shortcut by pressing the
+    StickS3 front button, now `Ctrl+F12` (macOS may display `^F12`)
+
+Verification done:
+
+- Checked for stale `Right Cmd`, `HID_MOD_RIGHT_GUI`, and command-key shortcut
+  references in the touched firmware/docs. Only unrelated "Command-line
+  fallback" wording remains.
+- Tried `idf.py build`.
+  - Plain shell had no `idf.py`.
+  - Found `/Users/csc/esp-idf`, but it is ESP-IDF 6.1.
+  - The project docs/CI expect ESP-IDF 5.5.
+  - Building under 6.1 stopped before compilation with CMake
+    `toolchain_flags.cmake`: `Toolchain directory does not exist:`.
+  - No extra repo files were modified by the failed build.
+
+X post state:
+
+- A new X compose draft is open in Google Chrome at `x.com/compose/post`.
+- Draft text is within the X character limit and mentions:
+  - VoxStick turns M5Stack StickS3 into a WeType voice-input stick
+  - computer sound input should be `StickS3-Mic`
+  - WeType path: settings -> voice input -> hands-free mode -> shortcut
+  - bind the front button to `Ctrl+F12`
+  - front button directly summons voice input; long press sends
+  - upright = live mic; flat = muted
+  - web installer/source link:
+    `https://openbrt.github.io/voxstick/install.html`
+- Two images are attached:
+  - `docs/assets/voxstick-upright-live.png`
+  - `docs/assets/voxstick-flat-muted.png`
+- The post has not been published. Final click on "Post" still needs explicit
+  user confirmation, e.g. user says "发".
+
+Outstanding work:
+
+1. Rebuild firmware with the intended ESP-IDF 5.5 environment, or let GitHub
+   Actions build it, to confirm the `Ctrl+F12` firmware change compiles in the
+   project-supported toolchain.
+2. If the web installer/release binary should also emit `Ctrl+F12`, create a
+   new firmware artifact/release and update the web installer manifest/assets
+   as needed. The source/docs are pushed, but the currently published binary
+   may still be from the previous shortcut build unless a release rebuild is
+   completed.
+3. Publish the prepared X post only after explicit user confirmation.
+4. Continue hardware validation on a real StickS3 after the rebuilt firmware is
+   flashed: verify BtnA triggers WeType via `Ctrl+F12`, long press sends Enter,
+   upright/flat mute behavior still works, and LCD status display is visible
+   without being wastefully full-bright in the normal state.
+
+### 2026-05-24 release follow-up
+
+Completed locally after the continuation above:
+
+- Built the firmware with PlatformIO's bundled ESP-IDF 5.5.2 toolchain using
+  raw Ninja after `pio run` stalled in component-manager preparation.
+- The environment that worked needed:
+  - `IDF_PATH=/Users/csc/.platformio/packages/framework-espidf`
+  - `IDF_PYTHON_ENV_PATH=/Users/csc/.platformio/penv/.espidf-5.5.2`
+  - `ESP_ROM_ELF_DIR=/Users/csc/.platformio/packages/tool-esp-rom-elfs`
+  - `PYTHONPATH=/Users/csc/.platformio/packages/tool-esptoolpy:/Users/csc/.platformio/penv/lib/python3.11/site-packages`
+- Fixed release metadata:
+  - top-level `CMakeLists.txt` now sets `PROJECT_VER` to `v0.1.5`
+  - boot log in `main/main.c` now says `fw v0.1.5`
+  - stale BtnA comment now says Ctrl+F12 instead of an old F-key reference
+- Rebuilt app successfully:
+  - `voxstick.bin` size: `0x57d60`
+  - app partition free space: `0x11f2a0` bytes (77%)
+- Generated new merged one-shot firmware image:
+  - `docs/firmware/v0.1.5/voxstick-full.bin`
+  - SHA-256:
+    `12f917fb1a8a858e652d2fbc626c872c416acd2b6ec12d343738dcdc814d8af1`
+- Updated web installer/docs to v0.1.5:
+  - `README.md`
+  - `README.zh.md`
+  - `docs/install.html`
+  - `docs/install-en.html`
+  - `docs/firmware/v0.1.5/manifest.json`
+  - `docs/firmware/v0.1.5/README.md`
+- Verified the merged binary strings contain:
+  - app descriptor version `v0.1.5`
+  - `tap->Ctrl+F12`
+  - `fw v0.1.5`
+  - no stale `Right Cmd`, `HID_MOD_RIGHT_GUI`, `fw v0.1.4`, or `dirty`
+    release-version string in the checked release/docs paths.
+
+Still not done:
+
+1. Publish/push the v0.1.5 commit/tag/release if the repo should make the new
+   installer live on GitHub Pages and the command-line release URL.
+2. Publish the prepared X post only after explicit user confirmation.
+3. Flash v0.1.5 to a real StickS3 and validate BtnA tap = `Ctrl+F12`,
+   long-press = `Enter`, IMU mute, and LCD state visibility.
+
 ## Files of interest
 
 - [PLAN.md](PLAN.md) — the original three-step roadmap
