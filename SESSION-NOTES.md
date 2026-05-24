@@ -485,7 +485,9 @@ writable USB mass-storage disk:
   - app partition free space: `0x119be0` bytes (75%)
 - Generated `docs/firmware/v0.1.6/voxstick-full.bin`.
   - SHA-256:
-    `2d703437b50593fc14ebef6f79fb1934160bcb5aa0ffd15c52059b158b304f63`
+    `4a81b4f05b656e0bed65ba5e4bb710182d19109d990089ebd43de14ec272b449`
+  - The checked-in image was replaced with the GitHub Actions release asset so
+    GitHub Pages installer bytes match the `v0.1.6` release download exactly.
 - Verified:
   - `git diff --check`
   - `docs/config.html` inline script syntax
