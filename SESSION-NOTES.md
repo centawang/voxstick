@@ -439,7 +439,9 @@ Completed locally after the continuation above:
 - Generated new merged one-shot firmware image:
   - `docs/firmware/v0.1.5/voxstick-full.bin`
   - SHA-256:
-    `12f917fb1a8a858e652d2fbc626c872c416acd2b6ec12d343738dcdc814d8af1`
+    `b4c9c317e45feca898c204fa0032a685063a753b445e3b96899f36da2062384a`
+  - The checked-in image was replaced with the GitHub Actions release asset so
+    GitHub Pages installer bytes match the `v0.1.5` release download exactly.
 - Updated web installer/docs to v0.1.5:
   - `README.md`
   - `README.zh.md`
