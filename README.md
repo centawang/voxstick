@@ -104,7 +104,7 @@ For chip recovery (no buttons), see [`tools/trigger-download.sh`](tools/trigger-
 
 | Gesture | HID output | Use |
 |---|---|---|
-| Tap BtnA (< 600 ms) | `Right Cmd + F12` | Toggle WeType voice input (or any tool bound to ⌘+F12) |
+| Tap BtnA (< 600 ms) | `Ctrl + F12` | Toggle WeType voice input, or any tool bound to Ctrl+F12 |
 | Hold BtnA (≥ 600 ms) | `Enter` | Send the dictated message |
 | Hold BtnA at boot | (none) | Reboot to ROM download mode for safe re-flash |
 
