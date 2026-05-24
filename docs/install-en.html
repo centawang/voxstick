@@ -90,6 +90,12 @@
         font-weight: 700;
       }
 
+      .top-links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+
       h1 {
         margin: 0;
         font-size: clamp(2.1rem, 6vw, 4.4rem);
@@ -252,7 +258,10 @@
       <header>
         <div class="topline">
           <div class="eyebrow">M5Stack StickS3 / ESP32-S3</div>
-          <a class="lang" href="./install.html">中文</a>
+          <div class="top-links">
+            <a class="lang" href="./config.html">Config</a>
+            <a class="lang" href="./install.html">中文</a>
+          </div>
         </div>
         <h1>VoxStick Web Installer</h1>
         <p class="lede">
@@ -291,12 +300,12 @@
       <section class="content-grid">
         <div class="panel flash-panel">
           <ul class="meta">
-            <li>Firmware v0.1.5</li>
+            <li>Firmware v0.1.6</li>
             <li>ESP32-S3</li>
             <li>Offset 0x0</li>
           </ul>
 
-          <esp-web-install-button manifest="./firmware/v0.1.5/manifest.json">
+          <esp-web-install-button manifest="./firmware/v0.1.6/manifest.json">
             <button slot="activate">Connect and flash VoxStick</button>
             <span slot="unsupported">Use desktop Chrome or Microsoft Edge.</span>
             <span slot="not-allowed">Open this page over HTTPS or localhost.</span>
@@ -318,6 +327,7 @@
             <li><strong>Hardware:</strong> when the page reports completion, unplug USB, double-press the StickS3 side button to power it off, then plug USB back in to boot the new firmware.</li>
             <li><strong>Computer OS:</strong> after the firmware boots, select <code>StickS3-Mic</code> in the system sound input settings.</li>
             <li><strong>WeType / dictation app:</strong> open voice-input shortcut settings, enable hands-free mode, then tap the StickS3 front button to bind <code>Ctrl+F12</code>. VoxStick sends <code>Left Ctrl+F12</code>; macOS may show it as <code>⌃F12</code>.</li>
+            <li><strong>Optional config:</strong> open the <a href="./config.html">VoxStick config page</a> to change flat auto-mute and button shortcut keys.</li>
           </ol>
         </aside>
       </section>

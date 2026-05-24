@@ -6,7 +6,7 @@
 //   - this header (TinyUSB compile-time class enables, EP counts, MTUs)
 //   - usb_descriptors.c (device + configuration + report descriptors)
 //
-// Layout: 1 audio control + 1 mic streaming + 1 HID = 3 interfaces.
+// Layout: 1 audio control + 1 mic streaming + 1 HID + 1 vendor = 4 interfaces.
 
 #pragma once
 
@@ -60,9 +60,8 @@ extern "C" {
 
 // ---- Class enables ------------------------------------------------------
 // CFG_TUD_AUDIO is defined by tusb_config_uac.h based on UAC_*_CHANNEL_NUM.
-// We add HID for the push-to-talk button and a tiny vendor recovery pipe so
-// host tooling can enter ROM download mode without fighting macOS keyboard
-// permissions.
+// We add HID for the push-to-talk button and a tiny vendor pipe for browser
+// configuration plus recovery tooling.
 #define CFG_TUD_HID             1
 #define CFG_TUD_HID_EP_BUFSIZE  16   // keyboard report = 8 B; 16 is plenty
 

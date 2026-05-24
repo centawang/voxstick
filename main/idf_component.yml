@@ -9,7 +9,7 @@ dependencies:
     version: ">=5.0"
   espressif/usb_device_uac: "*"
   espressif/esp_codec_dev: "*"
-  ## Bosch's official BMI270 sensor API. Used for orientation-based mic
-  ## auto-mute (lay stick flat -> g_uac_muted = true). Brings its own ~8 KB
-  ## firmware blob the chip needs to load before measurement.
+  ## Bosch's official BMI270 sensor API. Used for configurable
+  ## orientation-based mic auto-mute. Brings its own ~8 KB firmware blob the
+  ## chip needs to load before measurement.
   espressif2022/bmi270: "^1.1.0"

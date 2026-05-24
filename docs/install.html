@@ -90,6 +90,12 @@
         font-weight: 700;
       }
 
+      .top-links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+
       h1 {
         margin: 0;
         font-size: clamp(2.1rem, 6vw, 4.4rem);
@@ -252,7 +258,10 @@
       <header>
         <div class="topline">
           <div class="eyebrow">M5Stack StickS3 / ESP32-S3</div>
-          <a class="lang" href="./install-en.html">English</a>
+          <div class="top-links">
+            <a class="lang" href="./config.html">配置</a>
+            <a class="lang" href="./install-en.html">English</a>
+          </div>
         </div>
         <h1>VoxStick 网页烧录器</h1>
         <p class="lede">
@@ -291,12 +300,12 @@
       <section class="content-grid">
         <div class="panel flash-panel">
           <ul class="meta">
-            <li>固件 v0.1.5</li>
+            <li>固件 v0.1.6</li>
             <li>目标 ESP32-S3</li>
             <li>写入地址 0x0</li>
           </ul>
 
-          <esp-web-install-button manifest="./firmware/v0.1.5/manifest.json">
+          <esp-web-install-button manifest="./firmware/v0.1.6/manifest.json">
             <button slot="activate">连接并烧录 VoxStick</button>
             <span slot="unsupported">请使用桌面版 Chrome 或 Microsoft Edge 打开本页。</span>
             <span slot="not-allowed">请通过 HTTPS 或 localhost 打开本页。</span>
@@ -317,6 +326,7 @@
             <li><strong>硬件：</strong>页面提示烧录完成后，拔掉 USB，双击 StickS3 侧边键关机，再插回 USB 启动新固件。</li>
             <li><strong>电脑系统：</strong>固件启动后，在系统声音输入中选择 <code>StickS3-Mic</code>。</li>
             <li><strong>微信输入法：</strong>打开“设置 → 语音输入 → 免提模式 → 设置快捷键”，按一下 StickS3 正面大按键，绑定 <code>Ctrl+F12</code>（固件实际发左 Ctrl，macOS 可能显示为 <code>⌃F12</code>）。</li>
+            <li><strong>可选配置：</strong>打开 <a href="./config.html">VoxStick 配置页</a>，修改平放闭麦和按键触发键。</li>
           </ol>
         </aside>
       </section>

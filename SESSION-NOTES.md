@@ -464,6 +464,35 @@ Still not done:
 3. Flash v0.1.5 to a real StickS3 and validate BtnA tap = `Ctrl+F12`,
    long-press = `Enter`, IMU mute, and LCD state visibility.
 
+### 2026-05-25 configurable settings follow-up
+
+Implemented the first browser-configurable settings path without adding a
+writable USB mass-storage disk:
+
+- Added NVS-backed config storage in `main/vox_config.c`:
+  - flat auto-mute enabled/disabled
+  - BtnA tap modifier/keycode, default `Left Ctrl+F12`
+  - BtnA long-press modifier/keycode, default `Enter`
+  - long-press threshold, default `600 ms`
+- Reused the existing TinyUSB vendor bulk interface for a small `VXCF` request
+  / `VXCR` response protocol. The legacy `VOXSTICK_DOWNLOAD` bulk recovery
+  magic still works.
+- Added `docs/config.html`, a WebUSB config page that discovers the vendor
+  interface dynamically and writes config to NVS.
+- Bumped firmware metadata and installer docs to `v0.1.6`.
+- Built with raw Ninja in the PlatformIO ESP-IDF 5.5.2 environment:
+  - `voxstick.bin` size: `0x5d420`
+  - app partition free space: `0x119be0` bytes (75%)
+- Generated `docs/firmware/v0.1.6/voxstick-full.bin`.
+  - SHA-256:
+    `2d703437b50593fc14ebef6f79fb1934160bcb5aa0ffd15c52059b158b304f63`
+- Verified:
+  - `git diff --check`
+  - `docs/config.html` inline script syntax
+  - `docs/firmware/v0.1.6/manifest.json` JSON parsing
+  - desktop and mobile config-page layout via headless Chrome; CDP mobile
+    viewport check reported `scrollWidth == clientWidth == 390`.
+
 ## Files of interest
 
 - [PLAN.md](PLAN.md) — the original three-step roadmap

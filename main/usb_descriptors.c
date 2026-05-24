@@ -1,5 +1,5 @@
 // voxstick USB descriptors — composite UAC microphone + HID Keyboard +
-// vendor recovery pipe.
+// vendor control pipe.
 //
 // Adapted from espressif/usb_device_uac's reference usb_descriptors.c
 // (MIT, © 2019 Ha Thach / 2020 Jerzy Kasenbreg). The UAC pieces are
@@ -11,9 +11,8 @@
 // keyboard key. F19 is the standard "I will never collide with anything"
 // pick — mac-native keyboards don't have it, no app maps it by default.
 //
-// The vendor interface is intentionally boring: one bulk OUT/IN pair that lets
-// tools/trigger-download.sh ask the firmware to reboot into ROM download mode
-// without needing macOS HID or CoreAudio permissions.
+// The vendor interface is intentionally boring: one bulk OUT/IN pair for
+// browser configuration and a no-button ROM download fallback.
 
 #include <string.h>
 #include "tusb.h"
@@ -146,8 +145,7 @@ uint8_t const desc_configuration[] = {
                        EPNUM_HID_IN, CFG_TUD_HID_EP_BUFSIZE,
                        /* polling ms */ 10),
 
-    // Vendor-specific recovery interface. The IN endpoint is present to keep
-    // TinyUSB's vendor class happy, but current tooling only writes OUT.
+    // Vendor-specific control interface for WebUSB config and recovery tools.
     TUD_VENDOR_DESCRIPTOR(ITF_NUM_VENDOR, /* iInterface */ 6,
                           EPNUM_VENDOR_OUT, EPNUM_VENDOR_IN,
                           CFG_TUD_VENDOR_EPSIZE),
@@ -169,7 +167,7 @@ char const *string_desc_arr[] = {
     DESC_SERIAL,                         // 3: iSerialNumber
     "voxstick audio",                 // 4: UAC interface
     "voxstick PTT",                   // 5: HID interface
-    "voxstick recovery",              // 6: vendor recovery interface
+    "voxstick control",               // 6: vendor control interface
 };
 
 static uint16_t _desc_str[32];

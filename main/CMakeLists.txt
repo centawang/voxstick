@@ -1,5 +1,5 @@
 idf_component_register(
-    SRCS "main.c" "usb_descriptors.c" "usb_recovery.c"
+    SRCS "main.c" "usb_descriptors.c" "usb_recovery.c" "vox_config.c"
     PRIV_REQUIRES driver
                   esp_driver_i2c
                   esp_driver_spi
@@ -8,6 +8,7 @@ idf_component_register(
                   espressif__tinyusb
                   espressif2022__bmi270
                   espressif__i2c_bus
+                  nvs_flash
     INCLUDE_DIRS "."
 )
 

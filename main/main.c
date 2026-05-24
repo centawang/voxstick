@@ -40,10 +40,12 @@
 #include "class/hid/hid.h"
 #include "class/hid/hid_device.h"
 #include "esp_system.h"
+#include "nvs_flash.h"
 #include "soc/rtc_cntl_reg.h"
 #include "soc/soc.h"
 #include "bmi270.h"
 #include "bmi2_defs.h"
+#include "vox_config.h"
 
 // Set to 1 to skip TinyUSB / UAC init - keeps USB-Serial/JTAG console
 // alive on /dev/cu.usbmodem* so we can read ESP_LOG output. Diagnostic
@@ -170,6 +172,11 @@ static volatile bool            g_vad_display_enabled = false;
 // pick-it-up = live mic. Independent of g_uac_muted (host volume mute)
 // and g_codec_ready (codec init failure).
 static volatile bool            g_imu_mute  = false;
+
+static bool effective_mic_muted(void)
+{
+    return g_uac_muted || (vox_config_flat_mute_enabled() && g_imu_mute);
+}
 
 // =========================================================================
 // LCD — ST7789P3 over SPI3, used as a low-power status indicator.
@@ -414,7 +421,7 @@ static void vad_lcd_task(void *arg)
         uint32_t capped = level > VAD_FULL_LEVEL ? VAD_FULL_LEVEL : level;
         bool active = g_vad_active;
         bool codec_ready = g_codec_ready;
-        bool muted = g_uac_muted || g_imu_mute;
+        bool muted = effective_mic_muted();
         if (muted || !codec_ready) {
             capped = 0;
             active = false;
@@ -926,13 +933,15 @@ static void imu_task(void *arg)
             if (flat != prev_flat) {
                 prev_flat = flat;
                 g_imu_mute = flat;
-                ESP_LOGI(TAG, "imu: %s (|z|=%ld lsb)",
-                         flat ? "flat -> mute" : "upright -> live",
-                         (long)az);
+                bool flat_mute_enabled = vox_config_flat_mute_enabled();
+                ESP_LOGI(TAG, "imu: %s (|z|=%ld lsb, flat_mute=%s)",
+                         flat ? "flat" : "upright",
+                         (long)az,
+                         flat_mute_enabled ? "on" : "off");
                 // Refresh the LCD when not in VAD-display mode so the
                 // user has visual confirmation of the mute state.
                 if (!g_vad_display_enabled) {
-                    if (flat) {
+                    if (flat && flat_mute_enabled) {
                         lcd_status(COL_DIM_RED);
                     } else {
                         lcd_status(g_codec_ready ? COL_GREEN : COL_RED);
@@ -998,7 +1007,7 @@ static esp_err_t uac_input_cb(uint8_t *buf, size_t len, size_t *bytes_read, void
     // Two independent mute paths feed the same silence-the-stream branch:
     //   g_uac_muted - host-side mute (UAC volume control says mic off)
     //   g_imu_mute  - physical orientation mute (stick lying flat on table)
-    if (g_uac_muted || g_imu_mute) {
+    if (effective_mic_muted()) {
         memset(buf, 0, len);
         vad_update_from_pcm(NULL, 0, false);
         *bytes_read = len;
@@ -1110,8 +1119,8 @@ bool tud_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage,
 }
 
 // =========================================================================
-// Buttons — BtnA only. Tap = Left Ctrl + F12 (WeType voice toggle). Long
-// press (>= BTN_LONG_PRESS_MS) = Enter (send the dictated message).
+// Buttons — BtnA only. Tap and long-press output are configurable through
+// NVS. Defaults are Left Ctrl+F12 for WeType voice toggle and Enter for send.
 //
 // USB HID Keyboard/Keypad usage page (0x07):
 //   F13 = 0x68 .. F24 = 0x73   (TinyUSB also exposes HID_KEY_F13..F24)
@@ -1123,18 +1132,6 @@ bool tud_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage,
 #define BTN_DEBOUNCE_TICKS  2
 
 #define HID_REPORT_ID_KBD   1
-// WeType (微信输入法) hotkey picker rejects every F13..F24 and most loose
-// modifier-only combos. F19 also clashes with macOS native Dictation.
-// Left Ctrl+F12 keeps the docs and behavior easier to explain across Mac and
-// Windows than a GUI/Command-key combo. Most apps display it as plain Ctrl+F12.
-#define HID_KEY_F12         0x45
-#define HID_MOD_LEFT_CTRL   0x01
-#define HID_KEY_ENTER       0x28    // Return / Enter — long-press BtnA = send
-
-// Press shorter than this is a tap (toggle voice). Press at-or-longer is a
-// long-press (= Enter, used to send the dictated message in the focused
-// chat / editor). 600 ms feels intentional without dragging.
-#define BTN_LONG_PRESS_MS   600
 #define HID_DOWNLOAD_LED_MAGIC       0x1F
 #define HID_DOWNLOAD_MAGIC_REPEATS   3
 #define HID_DOWNLOAD_MAGIC_WINDOW_MS DOWNLOAD_MAGIC_WINDOW_MS
@@ -1230,16 +1227,13 @@ static void check_boot_button_for_download(void)
 }
 
 // Tap-vs-long-press disambiguator for BtnA.
-//   tap   (< BTN_LONG_PRESS_MS) -> momentary Left Ctrl+F12 press (= toggle voice
-//                                  recognition in WeType hands-free mode)
-//   hold  (≥ BTN_LONG_PRESS_MS) -> momentary Enter press (= send the
-//                                  dictated message)
 // We only emit the HID report on RELEASE, after we know which it was.
 // While the button is held the LCD shifts colour to give feedback:
-//   first BTN_LONG_PRESS_MS:  magenta (still in tap territory)
-//   after  BTN_LONG_PRESS_MS:  blue    (long-press latched, will Enter)
+//   before long threshold: magenta (still in tap territory)
+//   after  long threshold: blue    (long-press latched)
 static void hid_send_tap(uint8_t modifier, uint8_t keycode)
 {
+    if (keycode == 0) return;
     if (!tud_hid_ready()) return;
     uint8_t down[6] = { keycode };
     uint8_t up  [6] = { 0 };
@@ -1254,6 +1248,7 @@ static void button_task(void *arg)
     bool a_pending   = true;
     int  a_stable    = 0;
     TickType_t a_press_start = 0;
+    vox_config_wire_t a_press_cfg = {0};
     bool       a_long_latched = false;  // true once the press has crossed
                                         // the long threshold this hold
 
@@ -1267,21 +1262,24 @@ static void button_task(void *arg)
             if (!a_committed) {
                 // Just pressed.
                 a_press_start = xTaskGetTickCount();
+                vox_config_get(&a_press_cfg);
                 a_long_latched = false;
                 ESP_LOGI(TAG, "btn A down");
                 if (!g_vad_display_enabled) lcd_status(COL_MAGENTA);
             } else {
                 // Just released — fire the right tap.
                 TickType_t held = xTaskGetTickCount() - a_press_start;
-                bool is_long = pdTICKS_TO_MS(held) >= BTN_LONG_PRESS_MS;
-                ESP_LOGI(TAG, "btn A up after %lu ms (%s)",
+                bool is_long = pdTICKS_TO_MS(held) >= a_press_cfg.long_press_ms;
+                uint8_t modifier = is_long ?
+                    a_press_cfg.hold_modifier : a_press_cfg.tap_modifier;
+                uint8_t keycode = is_long ?
+                    a_press_cfg.hold_keycode : a_press_cfg.tap_keycode;
+                ESP_LOGI(TAG, "btn A up after %lu ms (%s 0x%02x+0x%02x)",
                          (unsigned long)pdTICKS_TO_MS(held),
-                         is_long ? "long->Enter" : "tap->LeftCtrl+F12");
-                if (is_long) {
-                    hid_send_tap(0, HID_KEY_ENTER);
-                } else {
-                    hid_send_tap(HID_MOD_LEFT_CTRL, HID_KEY_F12);
-                }
+                         is_long ? "long" : "tap",
+                         modifier,
+                         keycode);
+                hid_send_tap(modifier, keycode);
                 if (!g_vad_display_enabled) {
                     lcd_status(g_codec_ready ? COL_GREEN : COL_RED);
                 }
@@ -1293,7 +1291,7 @@ static void button_task(void *arg)
         // will send Enter rather than toggle voice.
         if (!a_committed && !a_long_latched) {
             TickType_t held = xTaskGetTickCount() - a_press_start;
-            if (pdTICKS_TO_MS(held) >= BTN_LONG_PRESS_MS) {
+            if (pdTICKS_TO_MS(held) >= a_press_cfg.long_press_ms) {
                 a_long_latched = true;
                 if (!g_vad_display_enabled) lcd_status(COL_BLUE);
             }
@@ -1313,7 +1311,19 @@ void app_main(void)
     // so esptool can talk to the chip on /dev/cu.usbmodem*.
     check_boot_button_for_download();
 
-    ESP_LOGI(TAG, "voxstick boot — fw v0.1.5");
+    ESP_LOGI(TAG, "voxstick boot — fw v0.1.6");
+
+    esp_err_t nvs_ret = nvs_flash_init();
+    if (nvs_ret == ESP_ERR_NVS_NO_FREE_PAGES ||
+        nvs_ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        nvs_ret = nvs_flash_init();
+    }
+    if (nvs_ret != ESP_OK) {
+        ESP_LOGW(TAG, "nvs init failed: %s; using volatile defaults",
+                 esp_err_to_name(nvs_ret));
+    }
+    vox_config_init();
 
     ESP_ERROR_CHECK(i2c_bus_init());
     ESP_LOGI(TAG, "i2c0 up (SDA=%d SCL=%d)", I2C_SDA_PIN, I2C_SCL_PIN);
@@ -1378,7 +1388,7 @@ void app_main(void)
     }
 
 #if !VOX_DEBUG_NO_UAC
-    lcd_draw_mic_status(0, false, g_codec_ready, g_uac_muted || g_imu_mute);
+    lcd_draw_mic_status(0, false, g_codec_ready, effective_mic_muted());
     xTaskCreate(vad_lcd_task, "vad_lcd", 3072, NULL, 4, NULL);
 #endif
 

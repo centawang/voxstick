@@ -8,7 +8,8 @@ M5Stack StickS3 (ESP32-S3).
 The stick is a single composite USB device that hosts see as **both** a
 16 kHz microphone *and* a HID keyboard. Tap the front button to toggle
 voice input, long-press to send (Enter). Lay the stick flat on a desk with
-the screen facing up and the IMU mutes the mic automatically. No drivers,
+the screen facing up and the IMU mutes the mic automatically. Flat auto-mute
+and button shortcut keys are configurable from the browser. No drivers,
 no companion app, plug-and-play on macOS / Windows / Linux.
 
 ## What it looks like
@@ -63,13 +64,16 @@ The easiest path is the browser installer:
 7. **Dictation app:** bind the voice-input shortcut by tapping the StickS3
    front button. VoxStick sends `Left Ctrl + F12`; most apps show this simply
    as `Ctrl+F12`, and macOS may show it as `⌃F12`.
+8. **Optional config:** open <https://openbrt.github.io/voxstick/config.html>
+   to change flat auto-mute, the tap shortcut, and the long-press shortcut.
 
 The installer is powered by
 [ESP Web Tools](https://esphome.github.io/esp-web-tools/) and writes the
 merged `voxstick-full.bin` image at flash offset `0x0`. The static installer
 files live in [`docs/install-en.html`](docs/install-en.html) and
-[`docs/install.html`](docs/install.html), with the firmware manifest in
-[`docs/firmware/v0.1.5/manifest.json`](docs/firmware/v0.1.5/manifest.json).
+[`docs/install.html`](docs/install.html). The WebUSB config page lives in
+[`docs/config.html`](docs/config.html), with the firmware manifest in
+[`docs/firmware/v0.1.6/manifest.json`](docs/firmware/v0.1.6/manifest.json).
 
 If GitHub Pages is not enabled yet, publish this repository from the `docs/`
 folder (`Settings > Pages > Deploy from a branch > main / docs`) and the URL
@@ -78,7 +82,7 @@ above will become live.
 Command-line fallback:
 
 ```sh
-curl -LO https://github.com/openbrt/voxstick/releases/download/v0.1.5/voxstick-full.bin
+curl -LO https://github.com/openbrt/voxstick/releases/download/v0.1.6/voxstick-full.bin
 esptool.py --chip esp32s3 -p /dev/cu.usbmodem* write_flash 0x0 voxstick-full.bin
 ```
 
@@ -109,6 +113,9 @@ For chip recovery (no buttons), see [`tools/trigger-download.sh`](tools/trigger-
 | Tap BtnA (< 600 ms) | `Left Ctrl + F12` | Toggle WeType voice input, or any tool bound to Ctrl+F12 |
 | Hold BtnA (≥ 600 ms) | `Enter` | Send the dictated message |
 | Hold BtnA at boot | (none) | Reboot to ROM download mode for safe re-flash |
+
+Use the [WebUSB config page](https://openbrt.github.io/voxstick/config.html)
+to change the first two rows without rebuilding firmware.
 
 ## License
 

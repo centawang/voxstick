@@ -11,7 +11,7 @@
 [USB-C] → 棒 → Mac
          │
          ├ 16 kHz 麦克风 (USB Audio Class)
-         └ 蓝牙级别的真键盘 (USB HID)：左 Ctrl+F12 / Enter
+         └ 蓝牙级别的真键盘 (USB HID)：默认左 Ctrl+F12 / Enter
 ```
 
 ## 真机和屏幕状态
@@ -45,7 +45,7 @@
 ## 关键卖点
 
 - **手感对**：物理大按键，不是 fn 也不是软件 hotkey。按一下就一下，不会跟系统快捷键打架
-- **隐私可控**：内置 6 轴 IMU。把棒**屏幕朝上平放桌面 → 麦克风物理静音**，立起来 → 解禁
+- **隐私可控**：内置 6 轴 IMU。把棒**屏幕朝上平放桌面 → 麦克风物理静音**，立起来 → 解禁；平放闭麦可在网页里关闭
 - **板载麦克风**：ES8311 codec + 高灵敏 MEMS 麦克风，远离笔记本风扇噪音
 - **低功耗状态屏**：240×135 LCD 低亮背光 + 小麦克风图标：
   - 屏幕朝上平放或电脑端 mute = 闭麦图标
@@ -79,12 +79,14 @@
 5. **硬件：**等烧录完成后拔掉 USB，双击侧边 PWR 键让 StickS3 完全关机，再插回 USB
 6. **电脑系统：**固件启动后，在系统声音输入中选择 `StickS3-Mic`
 7. **微信输入法：**进入 **设置 → 语音输入 → 免提模式 → 设置快捷键**，按一下棒上的大按键，绑定 `Ctrl+F12`（固件实际发左 Ctrl，macOS 可能显示为 `⌃F12`）
+8. **可选配置：**打开 <https://openbrt.github.io/voxstick/config.html>，修改平放闭麦、轻按触发键和长按发送键
 
 这个页面用的是 [ESP Web Tools](https://esphome.github.io/esp-web-tools/)，
 会把合并好的 `voxstick-full.bin` 从 `0x0` 一次性写进去。网页安装器源码在
 [`docs/install.html`](docs/install.html)，英文页在
-[`docs/install-en.html`](docs/install-en.html)，manifest 在
-[`docs/firmware/v0.1.5/manifest.json`](docs/firmware/v0.1.5/manifest.json)。
+[`docs/install-en.html`](docs/install-en.html)，配置页在
+[`docs/config.html`](docs/config.html)，manifest 在
+[`docs/firmware/v0.1.6/manifest.json`](docs/firmware/v0.1.6/manifest.json)。
 
 如果 GitHub Pages 还没打开，项目维护者需要到仓库
 `Settings > Pages > Deploy from a branch`，选择 `main` 分支和 `docs/`
@@ -93,7 +95,7 @@
 命令行兜底方式：
 
 ```sh
-curl -LO https://github.com/openbrt/voxstick/releases/download/v0.1.5/voxstick-full.bin
+curl -LO https://github.com/openbrt/voxstick/releases/download/v0.1.6/voxstick-full.bin
 esptool.py --chip esp32s3 -p /dev/cu.usbmodem* write_flash 0x0 voxstick-full.bin
 ```
 
@@ -130,10 +132,9 @@ ROM 下载模式。
 | [VoiceInk](https://github.com/Beingpax/VoiceInk) | F19 | 本地 whisper.cpp，开源免费 |
 | [MacWhisper Pro](https://goodsnooze.com/macwhisper) | 自定义 | whisper-large + GPT 纠错，$19 |
 
-如果用 macOS Dictation 或 VoiceInk，可以改一行代码把 BtnA 发的键改成
-F19（更"无冲突"），但之后跟微信输入法绑定就有冲突。详细见
-[main/main.c](main/main.c#L1100) 顶部 `HID_KEY_F12 / HID_MOD_LEFT_CTRL`
-那段。
+如果用 macOS Dictation 或 VoiceInk，可以打开
+<https://openbrt.github.io/voxstick/config.html> 把 BtnA 轻按改成 F19 或
+F20（更"无冲突"）。微信输入法仍建议保持默认的左 Ctrl+F12。
 
 ## 路线图
 
@@ -142,6 +143,7 @@ F19（更"无冲突"），但之后跟微信输入法绑定就有冲突。详细
 - ✅ 物理 PTT 按键 + 长按发送
 - ✅ IMU 平放静音
 - ✅ LCD 状态显示
+- ✅ 网页配置页（平放闭麦、轻按触发键、长按触发键）
 
 可能加的（看反馈）：
 - ⏳ 拔 USB 自动深度睡眠（电池续航 24h+）
