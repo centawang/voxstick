@@ -58,9 +58,11 @@ The easiest path is the browser installer:
    in the browser picker, and approve the install.
 5. **Hardware:** after flashing, unplug USB, double-click the side PWR button
    to fully power off the StickS3, then plug USB back in.
-6. **Computer OS / dictation app:** after the firmware boots, select
-   `StickS3-Mic` in system sound input settings or your dictation app's
-   microphone settings.
+6. **Computer OS:** after the firmware boots, select `StickS3-Mic` in system
+   sound input settings.
+7. **Dictation app:** bind the voice-input shortcut by tapping the StickS3
+   front button. VoxStick sends `Left Ctrl + F12`; most apps show this simply
+   as `Ctrl+F12`, and macOS may show it as `⌃F12`.
 
 The installer is powered by
 [ESP Web Tools](https://esphome.github.io/esp-web-tools/) and writes the
@@ -104,7 +106,7 @@ For chip recovery (no buttons), see [`tools/trigger-download.sh`](tools/trigger-
 
 | Gesture | HID output | Use |
 |---|---|---|
-| Tap BtnA (< 600 ms) | `Ctrl + F12` | Toggle WeType voice input, or any tool bound to Ctrl+F12 |
+| Tap BtnA (< 600 ms) | `Left Ctrl + F12` | Toggle WeType voice input, or any tool bound to Ctrl+F12 |
 | Hold BtnA (≥ 600 ms) | `Enter` | Send the dictated message |
 | Hold BtnA at boot | (none) | Reboot to ROM download mode for safe re-flash |
 

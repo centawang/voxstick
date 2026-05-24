@@ -9,5 +9,5 @@ This directory is served by GitHub Pages for the browser-based installer.
 
 This binary mirrors the `voxstick-full.bin` asset from the
 [`v0.1.5` GitHub release](https://github.com/openbrt/voxstick/releases/tag/v0.1.5).
-It updates the BtnA tap shortcut to `Ctrl+F12`, matching the WeType setup docs
-for both macOS and Windows. Long-press BtnA still sends `Enter`.
+It updates the BtnA tap shortcut to `Left Ctrl+F12`, matching the WeType setup
+docs for both macOS and Windows. Long-press BtnA still sends `Enter`.

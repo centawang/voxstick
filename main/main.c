@@ -1110,7 +1110,7 @@ bool tud_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage,
 }
 
 // =========================================================================
-// Buttons — BtnA only. Tap = Ctrl + F12 (WeType voice toggle). Long
+// Buttons — BtnA only. Tap = Left Ctrl + F12 (WeType voice toggle). Long
 // press (>= BTN_LONG_PRESS_MS) = Enter (send the dictated message).
 //
 // USB HID Keyboard/Keypad usage page (0x07):
@@ -1125,8 +1125,8 @@ bool tud_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage,
 #define HID_REPORT_ID_KBD   1
 // WeType (微信输入法) hotkey picker rejects every F13..F24 and most loose
 // modifier-only combos. F19 also clashes with macOS native Dictation.
-// Ctrl+F12 keeps the docs and behavior easier to explain across Mac and
-// Windows than a GUI/Command-key combo.
+// Left Ctrl+F12 keeps the docs and behavior easier to explain across Mac and
+// Windows than a GUI/Command-key combo. Most apps display it as plain Ctrl+F12.
 #define HID_KEY_F12         0x45
 #define HID_MOD_LEFT_CTRL   0x01
 #define HID_KEY_ENTER       0x28    // Return / Enter — long-press BtnA = send
@@ -1230,7 +1230,7 @@ static void check_boot_button_for_download(void)
 }
 
 // Tap-vs-long-press disambiguator for BtnA.
-//   tap   (< BTN_LONG_PRESS_MS) -> momentary Ctrl+F12 press (= toggle voice
+//   tap   (< BTN_LONG_PRESS_MS) -> momentary Left Ctrl+F12 press (= toggle voice
 //                                  recognition in WeType hands-free mode)
 //   hold  (≥ BTN_LONG_PRESS_MS) -> momentary Enter press (= send the
 //                                  dictated message)
@@ -1276,7 +1276,7 @@ static void button_task(void *arg)
                 bool is_long = pdTICKS_TO_MS(held) >= BTN_LONG_PRESS_MS;
                 ESP_LOGI(TAG, "btn A up after %lu ms (%s)",
                          (unsigned long)pdTICKS_TO_MS(held),
-                         is_long ? "long->Enter" : "tap->Ctrl+F12");
+                         is_long ? "long->Enter" : "tap->LeftCtrl+F12");
                 if (is_long) {
                     hid_send_tap(0, HID_KEY_ENTER);
                 } else {
