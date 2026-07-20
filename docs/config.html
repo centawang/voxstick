@@ -3,10 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>VoxStick 配置</title>
+    <title>vibestick 配置</title>
     <meta
       name="description"
-      content="通过 WebUSB 配置 VoxStick 的平放闭麦和按键触发键。"
+      content="通过 WebUSB 配置 vibestick 的平放闭麦和按键触发键。"
     />
     <style>
       :root {
@@ -383,19 +383,15 @@
     <main>
       <header>
         <div class="topline">
-          <div class="eyebrow">VoxStick / WebUSB</div>
-          <nav>
-            <a href="./install.html">网页烧录器</a>
-            <a href="https://github.com/openbrt/voxstick">源码</a>
-          </nav>
+          <div class="eyebrow">vibestick / WebUSB</div>
         </div>
-        <h1>VoxStick 配置</h1>
+        <h1>vibestick 配置</h1>
       </header>
 
       <section class="layout">
         <section class="panel" aria-label="配置表单">
           <div class="connect-row">
-            <button id="connectBtn" type="button">连接 VoxStick</button>
+            <button id="connectBtn" type="button">连接 vibestick</button>
             <span id="dirtyBadge" class="badge">未连接</span>
           </div>
           <p id="status" class="status">
@@ -439,7 +435,7 @@
 
               <div class="setting">
                 <div class="actions">
-                  <button id="saveBtn" type="button">保存到 VoxStick</button>
+                  <button id="saveBtn" type="button">保存到 vibestick</button>
                   <button id="reloadBtn" class="secondary" type="button">
                     重新读取
                   </button>
@@ -878,7 +874,7 @@
             }
           }
         }
-        throw new Error("没有找到 VoxStick vendor 配置接口。");
+        throw new Error("没有找到 vibestick vendor 配置接口。");
       }
 
       function encodeRequest(command, payload = new Uint8Array()) {
@@ -924,7 +920,7 @@
 
       async function sendCommand(command, payload) {
         if (!state.device || state.outEndpoint == null || state.inEndpoint == null) {
-          throw new Error("VoxStick 尚未连接。");
+          throw new Error("vibestick 尚未连接。");
         }
         const request = encodeRequest(command, payload);
         const out = await withTimeout(
@@ -1003,7 +999,7 @@
       }
 
       async function resetConfig() {
-        if (!window.confirm("恢复 VoxStick 默认配置？")) {
+        if (!window.confirm("恢复 vibestick 默认配置？")) {
           return;
         }
         setStatus("正在恢复默认配置...");
@@ -1110,7 +1106,7 @@
               state.inEndpoint = null;
               state.outEndpoint = null;
               setConnected(false);
-              setStatus("VoxStick 已断开。", "warn");
+              setStatus("vibestick 已断开。", "warn");
             }
           });
           setStatus("连接后会自动读取当前配置。");

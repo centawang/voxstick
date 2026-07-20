@@ -26,6 +26,7 @@ static const char *TAG = "voxstick";
 
 uint32_t tud_vendor_n_write(uint8_t itf, void const *buffer, uint32_t bufsize);
 uint32_t tud_vendor_n_write_flush(uint8_t itf);
+void tud_vendor_n_read_flush(uint8_t itf);
 
 void voxstick_force_link_usb_recovery(void)
 {
@@ -215,4 +216,10 @@ void tud_vendor_rx_cb(uint8_t itf, uint8_t const *buffer, uint16_t bufsize)
     }
 
     (void)handle_config_packet(itf, buffer, bufsize);
+
+    // TinyUSB copies each received packet into its buffered vendor RX FIFO
+    // before invoking this callback. If we do not drain it, fewer than one
+    // 64-byte USB packet remains free and the bulk OUT endpoint is never
+    // armed again, so the next WebUSB transferOut() waits until it times out.
+    tud_vendor_n_read_flush(itf);
 }
