@@ -21,6 +21,7 @@
 #include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/semphr.h"
 #include "esp_log.h"
 #include "esp_err.h"
 #include "esp_check.h"
@@ -87,9 +88,10 @@ static const char *TAG = "voxstick";
 #define I2S_WS_PIN    15
 #define I2S_DIN_PIN   16
 
-// StickS3 face button. BtnA = front, big M5 logo. BtnB header is unpopulated
-// on this hardware revision so we don't bother polling it.
+// StickS3 buttons. M5Unified's board definition maps BtnA/BtnB to GPIO11/12;
+// both are active-low.
 #define BTN_A_GPIO    GPIO_NUM_11
+#define BTN_B_GPIO    GPIO_NUM_12
 
 // ---- LCD (ST7789P3 135x240, SPI3) ---------------------------------------
 // Numbers from the M5StickS3 datasheet / weclawbot-base reference.
@@ -167,11 +169,14 @@ static uint32_t                 g_diag_tone_phase = 0;
 static volatile uint32_t        g_vad_level = 0;
 static volatile bool            g_vad_active = false;
 static volatile bool            g_vad_display_enabled = false;
+static SemaphoreHandle_t        g_hid_mutex = NULL;
 // IMU orientation-based mute: true when the BMI270 reports the stick is
 // lying flat. ORed into the audio path so flat-on-table = silence,
 // pick-it-up = live mic. Independent of g_uac_muted (host volume mute)
 // and g_codec_ready (codec init failure).
 static volatile bool            g_imu_mute  = false;
+
+static bool hid_send_tap(uint8_t modifier, uint8_t keycode);
 
 static bool effective_mic_muted(void)
 {
@@ -834,7 +839,14 @@ static esp_err_t codec_init(void)
 #define IMU_FLAT_THRESHOLD_LSB   11500
 // Hysteresis to prevent chatter when the stick is at 45° on a stack of paper.
 #define IMU_LIVE_THRESHOLD_LSB   9500
-#define IMU_POLL_MS              200
+#define IMU_POLL_MS              20
+// A deliberate shake creates two rapid, opposing acceleration-vector changes.
+// Requiring separate excursions rejects normal orientation changes and bumps.
+#define IMU_SHAKE_DELTA_LSB      9000     // about 0.55 g at ±2 g range
+#define IMU_SHAKE_RELEASE_LSB    3500
+#define IMU_SHAKE_MIN_GAP_MS     60
+#define IMU_SHAKE_WINDOW_MS      450
+#define IMU_SHAKE_REARM_MS       300
 
 static struct bmi2_dev          g_bmi;
 static i2c_master_dev_handle_t  g_imu_dev = NULL;
@@ -916,9 +928,94 @@ static void imu_task(void *arg)
 {
     struct bmi2_sens_data data = {0};
     bool prev_flat = false;
+    bool have_prev_sample = false;
+    int16_t prev_x = 0;
+    int16_t prev_y = 0;
+    int16_t prev_z = 0;
+    bool shake_armed = true;
+    bool shake_in_excursion = false;
+    bool have_first_peak = false;
+    int32_t first_dx = 0;
+    int32_t first_dy = 0;
+    int32_t first_dz = 0;
+    TickType_t first_peak_tick = 0;
+    bool rearm_timer_running = false;
+    TickType_t rearm_start_tick = 0;
+
     while (1) {
         if (bmi2_get_sensor_data(&data, &g_bmi) == BMI2_OK &&
             (data.status & BMI2_DRDY_ACC)) {
+            TickType_t now = xTaskGetTickCount();
+
+            if (have_prev_sample) {
+                int32_t dx = (int32_t)data.acc.x - prev_x;
+                int32_t dy = (int32_t)data.acc.y - prev_y;
+                int32_t dz = (int32_t)data.acc.z - prev_z;
+                int64_t delta_sq = (int64_t)dx * dx +
+                                   (int64_t)dy * dy +
+                                   (int64_t)dz * dz;
+                int64_t threshold_sq =
+                    (int64_t)IMU_SHAKE_DELTA_LSB * IMU_SHAKE_DELTA_LSB;
+                int64_t release_sq =
+                    (int64_t)IMU_SHAKE_RELEASE_LSB * IMU_SHAKE_RELEASE_LSB;
+
+                if (delta_sq <= release_sq) {
+                    shake_in_excursion = false;
+                    if (!shake_armed) {
+                        if (!rearm_timer_running) {
+                            rearm_timer_running = true;
+                            rearm_start_tick = now;
+                        } else if (now - rearm_start_tick >=
+                                   pdMS_TO_TICKS(IMU_SHAKE_REARM_MS)) {
+                            shake_armed = true;
+                            rearm_timer_running = false;
+                        }
+                    }
+                } else {
+                    rearm_timer_running = false;
+                }
+
+                if (have_first_peak &&
+                    now - first_peak_tick > pdMS_TO_TICKS(IMU_SHAKE_WINDOW_MS)) {
+                    have_first_peak = false;
+                }
+
+                if (shake_armed && !shake_in_excursion &&
+                    delta_sq >= threshold_sq) {
+                    shake_in_excursion = true;
+
+                    if (!have_first_peak) {
+                        first_dx = dx;
+                        first_dy = dy;
+                        first_dz = dz;
+                        first_peak_tick = now;
+                        have_first_peak = true;
+                    } else {
+                        TickType_t gap = now - first_peak_tick;
+                        int64_t dot = (int64_t)first_dx * dx +
+                                      (int64_t)first_dy * dy +
+                                      (int64_t)first_dz * dz;
+                        bool opposing = dot <= -(threshold_sq / 4);
+
+                        if (gap >= pdMS_TO_TICKS(IMU_SHAKE_MIN_GAP_MS) &&
+                            gap <= pdMS_TO_TICKS(IMU_SHAKE_WINDOW_MS) &&
+                            opposing) {
+                            bool sent = hid_send_tap(KEYBOARD_MODIFIER_LEFTCTRL, 0);
+                            ESP_LOGI(TAG, "imu: shake -> Left Ctrl (%s)",
+                                     sent ? "sent" : "USB not ready");
+                            shake_armed = false;
+                            rearm_timer_running = false;
+                            have_first_peak = false;
+                        }
+                    }
+                }
+            }
+
+            prev_x = data.acc.x;
+            prev_y = data.acc.y;
+            prev_z = data.acc.z;
+            have_prev_sample = true;
+
             // Convention: stick lying flat (face up or face down) on a
             // table -> |z| dominates. Pick it up to portrait or any
             // tilted orientation -> |z| drops, |x|/|y| dominate.
@@ -1119,8 +1216,9 @@ bool tud_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage,
 }
 
 // =========================================================================
-// Buttons — BtnA only. Tap and long-press output are configurable through
-// NVS. Defaults are Left Ctrl+F12 for WeType voice toggle and Enter for send.
+// Buttons. BtnA tap and long-press output are configurable through NVS;
+// defaults are Left Ctrl+F12 and Backspace. BtnA double-tap sends Enter.
+// BtnB tap/double-tap sends Down/Up Arrow.
 //
 // USB HID Keyboard/Keypad usage page (0x07):
 //   F13 = 0x68 .. F24 = 0x73   (TinyUSB also exposes HID_KEY_F13..F24)
@@ -1130,6 +1228,7 @@ bool tud_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage,
 // =========================================================================
 #define BTN_POLL_MS         10
 #define BTN_DEBOUNCE_TICKS  2
+#define BTN_DOUBLE_CLICK_MS 350
 
 #define HID_REPORT_ID_KBD   1
 #define HID_DOWNLOAD_LED_MAGIC       0x1F
@@ -1193,8 +1292,11 @@ void voxstick_hid_set_report_cb(uint8_t instance, uint8_t report_id,
 
 static void buttons_init(void)
 {
+    g_hid_mutex = xSemaphoreCreateMutex();
+    ESP_ERROR_CHECK(g_hid_mutex ? ESP_OK : ESP_ERR_NO_MEM);
+
     gpio_config_t cfg = {
-        .pin_bit_mask  = (1ULL << BTN_A_GPIO),
+        .pin_bit_mask  = (1ULL << BTN_A_GPIO) | (1ULL << BTN_B_GPIO),
         .mode          = GPIO_MODE_INPUT,
         .pull_up_en    = GPIO_PULLUP_ENABLE,
         .pull_down_en  = GPIO_PULLDOWN_DISABLE,
@@ -1210,8 +1312,8 @@ static void buttons_init(void)
 // the battery drains. esptool clears FORCE_DOWNLOAD_BOOT on the next
 // flash so we never get stuck a second time.
 //
-// During runtime BtnA has no time-out: it's the PTT key for VoiceInk
-// and gets held for as long as the user wants to dictate.
+// During runtime BtnA uses the configurable long-press threshold. Holding it
+// at boot remains reserved for ROM-download recovery.
 static void check_boot_button_for_download(void)
 {
     gpio_reset_pin(BTN_A_GPIO);
@@ -1226,20 +1328,48 @@ static void check_boot_button_for_download(void)
     enter_rom_download_mode("BtnA held at boot");
 }
 
-// Tap-vs-long-press disambiguator for BtnA.
-// We only emit the HID report on RELEASE, after we know which it was.
+// Single/double/long-press disambiguator for BtnA.
+// We delay a single click until the double-click window closes.
 // While the button is held the LCD shifts colour to give feedback:
 //   before long threshold: magenta (still in tap territory)
 //   after  long threshold: blue    (long-press latched)
-static void hid_send_tap(uint8_t modifier, uint8_t keycode)
+static bool hid_submit_keyboard_report(uint8_t modifier, uint8_t keycode,
+                                       uint32_t timeout_ms)
 {
-    if (keycode == 0) return;
-    if (!tud_hid_ready()) return;
-    uint8_t down[6] = { keycode };
-    uint8_t up  [6] = { 0 };
-    tud_hid_keyboard_report(HID_REPORT_ID_KBD, modifier, down);
-    vTaskDelay(pdMS_TO_TICKS(15));
-    tud_hid_keyboard_report(HID_REPORT_ID_KBD, 0, up);
+    uint8_t keys[6] = { keycode };
+    TickType_t start = xTaskGetTickCount();
+    do {
+        if (tud_hid_ready() &&
+            tud_hid_keyboard_report(HID_REPORT_ID_KBD, modifier, keys)) {
+            return true;
+        }
+        vTaskDelay(pdMS_TO_TICKS(1));
+    } while (xTaskGetTickCount() - start < pdMS_TO_TICKS(timeout_ms));
+    return false;
+}
+
+static bool hid_send_tap(uint8_t modifier, uint8_t keycode)
+{
+    if (modifier == 0 && keycode == 0) return false;
+    if (g_hid_mutex &&
+        xSemaphoreTake(g_hid_mutex, pdMS_TO_TICKS(250)) != pdTRUE) {
+        return false;
+    }
+
+    bool down_sent = hid_submit_keyboard_report(modifier, keycode, 150);
+    bool up_sent = false;
+    if (down_sent) {
+        // Wait for TinyUSB to finish the key-down transfer before queuing the
+        // release. Retrying prevents a busy interrupt endpoint from dropping
+        // key-up and leaving a key logically held on the host.
+        up_sent = hid_submit_keyboard_report(0, 0, 250);
+    }
+
+    if (g_hid_mutex) xSemaphoreGive(g_hid_mutex);
+    if (down_sent && !up_sent) {
+        ESP_LOGW(TAG, "HID key release timed out");
+    }
+    return down_sent && up_sent;
 }
 
 static void button_task(void *arg)
@@ -1249,11 +1379,22 @@ static void button_task(void *arg)
     int  a_stable    = 0;
     TickType_t a_press_start = 0;
     vox_config_wire_t a_press_cfg = {0};
+    vox_config_wire_t a_first_click_cfg = {0};
     bool       a_long_latched = false;  // true once the press has crossed
                                         // the long threshold this hold
+    bool a_click_pending = false;
+    bool a_second_press = false;
+    TickType_t a_first_release = 0;
+    bool b_committed = true;
+    bool b_pending   = true;
+    int  b_stable    = 0;
+    bool b_click_pending = false;
+    bool b_second_press = false;
+    TickType_t b_first_release = 0;
 
     while (1) {
         bool a = gpio_get_level(BTN_A_GPIO);
+        bool b = gpio_get_level(BTN_B_GPIO);
 
         if (a != a_pending) { a_pending = a; a_stable = 0; }
         else if (a_stable < BTN_DEBOUNCE_TICKS) { a_stable++; }
@@ -1261,25 +1402,52 @@ static void button_task(void *arg)
             a_committed = a_pending;
             if (!a_committed) {
                 // Just pressed.
-                a_press_start = xTaskGetTickCount();
+                TickType_t now = xTaskGetTickCount();
+                a_press_start = now;
                 vox_config_get(&a_press_cfg);
                 a_long_latched = false;
-                ESP_LOGI(TAG, "btn A down");
+                if (a_click_pending &&
+                    now - a_first_release <=
+                        pdMS_TO_TICKS(BTN_DOUBLE_CLICK_MS)) {
+                    a_second_press = true;
+                    ESP_LOGI(TAG, "btn A second down");
+                } else {
+                    if (a_click_pending) {
+                        ESP_LOGI(TAG, "btn A single -> 0x%02x+0x%02x",
+                                 a_first_click_cfg.tap_modifier,
+                                 a_first_click_cfg.tap_keycode);
+                        hid_send_tap(a_first_click_cfg.tap_modifier,
+                                     a_first_click_cfg.tap_keycode);
+                    }
+                    a_click_pending = false;
+                    a_second_press = false;
+                    ESP_LOGI(TAG, "btn A down");
+                }
                 if (!g_vad_display_enabled) lcd_status(COL_MAGENTA);
             } else {
-                // Just released — fire the right tap.
+                // Just released — long press wins over double/single click.
                 TickType_t held = xTaskGetTickCount() - a_press_start;
-                bool is_long = pdTICKS_TO_MS(held) >= a_press_cfg.long_press_ms;
-                uint8_t modifier = is_long ?
-                    a_press_cfg.hold_modifier : a_press_cfg.tap_modifier;
-                uint8_t keycode = is_long ?
-                    a_press_cfg.hold_keycode : a_press_cfg.tap_keycode;
-                ESP_LOGI(TAG, "btn A up after %lu ms (%s 0x%02x+0x%02x)",
-                         (unsigned long)pdTICKS_TO_MS(held),
-                         is_long ? "long" : "tap",
-                         modifier,
-                         keycode);
-                hid_send_tap(modifier, keycode);
+                bool is_long = a_long_latched ||
+                    pdTICKS_TO_MS(held) >= a_press_cfg.long_press_ms;
+                if (is_long) {
+                    ESP_LOGI(TAG, "btn A long -> 0x%02x+0x%02x",
+                             a_press_cfg.hold_modifier,
+                             a_press_cfg.hold_keycode);
+                    hid_send_tap(a_press_cfg.hold_modifier,
+                                 a_press_cfg.hold_keycode);
+                    a_click_pending = false;
+                    a_second_press = false;
+                } else if (a_second_press) {
+                    ESP_LOGI(TAG, "btn A double -> Enter");
+                    hid_send_tap(0, HID_KEY_ENTER);
+                    a_click_pending = false;
+                    a_second_press = false;
+                } else {
+                    a_first_click_cfg = a_press_cfg;
+                    a_click_pending = true;
+                    a_first_release = xTaskGetTickCount();
+                    ESP_LOGI(TAG, "btn A first click; waiting for double");
+                }
                 if (!g_vad_display_enabled) {
                     lcd_status(g_codec_ready ? COL_GREEN : COL_RED);
                 }
@@ -1287,14 +1455,69 @@ static void button_task(void *arg)
         }
 
         // While still held, switch to blue once the long-press threshold is
-        // crossed so the user gets visual confirmation that releasing now
-        // will send Enter rather than toggle voice.
+        // crossed so the user knows releasing now will send the configured
+        // hold action (Backspace by default), not a click gesture.
         if (!a_committed && !a_long_latched) {
             TickType_t held = xTaskGetTickCount() - a_press_start;
             if (pdTICKS_TO_MS(held) >= a_press_cfg.long_press_ms) {
                 a_long_latched = true;
+                a_click_pending = false;
+                a_second_press = false;
                 if (!g_vad_display_enabled) lcd_status(COL_BLUE);
             }
+        }
+
+        if (a_click_pending && !a_second_press && a_committed &&
+            xTaskGetTickCount() - a_first_release >=
+                pdMS_TO_TICKS(BTN_DOUBLE_CLICK_MS)) {
+            ESP_LOGI(TAG, "btn A single -> 0x%02x+0x%02x",
+                     a_first_click_cfg.tap_modifier,
+                     a_first_click_cfg.tap_keycode);
+            hid_send_tap(a_first_click_cfg.tap_modifier,
+                         a_first_click_cfg.tap_keycode);
+            a_click_pending = false;
+        }
+
+        if (b != b_pending) { b_pending = b; b_stable = 0; }
+        else if (b_stable < BTN_DEBOUNCE_TICKS) { b_stable++; }
+        else if (b_pending != b_committed) {
+            b_committed = b_pending;
+            if (!b_committed) {
+                TickType_t now = xTaskGetTickCount();
+                if (b_click_pending &&
+                    now - b_first_release <=
+                        pdMS_TO_TICKS(BTN_DOUBLE_CLICK_MS)) {
+                    b_second_press = true;
+                    ESP_LOGI(TAG, "btn B second down");
+                } else {
+                    if (b_click_pending) {
+                        ESP_LOGI(TAG, "btn B single -> Arrow Down");
+                        hid_send_tap(0, HID_KEY_ARROW_DOWN);
+                    }
+                    b_click_pending = false;
+                    b_second_press = false;
+                    ESP_LOGI(TAG, "btn B down");
+                }
+            } else {
+                if (b_second_press) {
+                    ESP_LOGI(TAG, "btn B double -> Arrow Up");
+                    hid_send_tap(0, HID_KEY_ARROW_UP);
+                    b_click_pending = false;
+                    b_second_press = false;
+                } else {
+                    b_click_pending = true;
+                    b_first_release = xTaskGetTickCount();
+                    ESP_LOGI(TAG, "btn B first click; waiting for double");
+                }
+            }
+        }
+
+        if (b_click_pending && !b_second_press && b_committed &&
+            xTaskGetTickCount() - b_first_release >=
+                pdMS_TO_TICKS(BTN_DOUBLE_CLICK_MS)) {
+            ESP_LOGI(TAG, "btn B single -> Arrow Down");
+            hid_send_tap(0, HID_KEY_ARROW_DOWN);
+            b_click_pending = false;
         }
 
         vTaskDelay(pdMS_TO_TICKS(BTN_POLL_MS));
@@ -1376,7 +1599,8 @@ void app_main(void)
 
     buttons_init();
     xTaskCreate(button_task, "btn", 2048, NULL, 5, NULL);
-    ESP_LOGI(TAG, "buttons up (BtnA=GPIO%d)", BTN_A_GPIO);
+    ESP_LOGI(TAG, "buttons up (BtnA=GPIO%d BtnB=GPIO%d)",
+             BTN_A_GPIO, BTN_B_GPIO);
 
     // BMI270 IMU for orientation-based mic auto-mute. Best-effort: if init
     // fails (chip absent / I2C glitch / blob load failure) we just skip the

@@ -35,9 +35,9 @@ in whatever app is focused.
 
 - USB descriptor → composite UAC + HID Consumer Control (reference
   [Alexaznavour/micemul](https://github.com/Alexaznavour/micemul))
-- BtnA press / release → HID report sending `KEY_F19` (or vendor-defined usage
-  if F19 conflicts; Karabiner-Elements as fallback)
-- BtnB → `KEY_F20` reserved for future modes
+- BtnA tap → configurable PTT shortcut; double-tap → `Enter`; long-press →
+  `Backspace`
+- BtnB tap → `Down Arrow`; double-tap → `Up Arrow`
 - LCD: minimum viable indicator — red dot in top-right while button is held
 - Mac side: install [VoiceInk](https://github.com/Beingpax/VoiceInk),
   - input device = `StickS3-Mic`
@@ -69,7 +69,7 @@ with optional double-tap-to-toggle-language and IMU wake.
   - `recording` — red waveform / level meter
   - `transcribing` — spinner
   - `done "<text>"` — text bubble for 2 s
-- Optional: double-tap BtnA = swap language, long-press BtnB = re-dictate
+- Optional: add a dedicated language-switch gesture and re-dictate action
   cached PCM buffer, IMU wake
 
 **Risks**

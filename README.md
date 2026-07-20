@@ -7,7 +7,7 @@ M5Stack StickS3 (ESP32-S3).
 
 The stick is a single composite USB device that hosts see as **both** a
 16 kHz microphone *and* a HID keyboard. Tap the front button to toggle
-voice input, long-press to send (Enter). Lay the stick flat on a desk with
+voice input, double-tap for Enter, or hold for Backspace. Lay it flat with
 the screen facing up and the IMU mutes the mic automatically. Flat auto-mute
 and button shortcut keys are configurable from the browser. No drivers,
 no companion app, plug-and-play on macOS / Windows / Linux.
@@ -110,12 +110,16 @@ For chip recovery (no buttons), see [`tools/trigger-download.sh`](tools/trigger-
 
 | Gesture | HID output | Use |
 |---|---|---|
-| Tap BtnA (< 600 ms) | `Left Ctrl + F12` | Toggle WeType voice input, or any tool bound to Ctrl+F12 |
-| Hold BtnA (≥ 600 ms) | `Enter` | Send the dictated message |
+| Tap BtnA | `Left Ctrl + F12` | Toggle WeType voice input, or any tool bound to Ctrl+F12 |
+| Double-tap BtnA | `Enter` | Send the dictated message |
+| Hold BtnA (≥ 600 ms) | `Backspace` | Delete the previous character or selection |
+| Tap BtnB | `Down Arrow` | Move the cursor or current selection down once |
+| Double-tap BtnB | `Up Arrow` | Move the cursor or current selection up once |
+| Shake the stick | `Left Ctrl` | Send one Left Ctrl press and release |
 | Hold BtnA at boot | (none) | Reboot to ROM download mode for safe re-flash |
 
 Use the [WebUSB config page](https://openbrt.github.io/voxstick/config.html)
-to change the first two rows without rebuilding firmware.
+to change the BtnA tap and hold actions without rebuilding firmware.
 
 ## License
 

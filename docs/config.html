@@ -423,6 +423,7 @@
               <div class="setting">
                 <label for="holdPreset">长按触发键</label>
                 <select id="holdPreset">
+                  <option value="backspace">Backspace</option>
                   <option value="enter">Enter</option>
                   <option value="none">不发送按键</option>
                   <option value="f20">F20</option>
@@ -438,6 +439,7 @@
                     <select id="holdKey"></select>
                   </div>
                 </div>
+                <p class="fine-print">双击 BtnA 固定发送 Enter。</p>
               </div>
 
               <div class="setting">
@@ -481,6 +483,8 @@
             <dd id="summaryFlat">-</dd>
             <dt>轻按</dt>
             <dd id="summaryTap">-</dd>
+            <dt>双击</dt>
+            <dd>Enter（固定）</dd>
             <dt>长按</dt>
             <dd id="summaryHold">-</dd>
             <dt>阈值</dt>
@@ -511,7 +515,7 @@
         tapModifier: 0x01,
         tapKeycode: 0x45,
         holdModifier: 0,
-        holdKeycode: 0x28,
+        holdKeycode: 0x2a,
         longPressMs: 600,
       };
 
@@ -541,6 +545,7 @@
         { code: 0x72, label: "F23" },
         { code: 0x73, label: "F24" },
         { code: 0x28, label: "Enter" },
+        { code: 0x2a, label: "Backspace" },
         { code: 0x2c, label: "Space" },
         { code: 0x2b, label: "Tab" },
         { code: 0x29, label: "Esc" },
@@ -554,6 +559,7 @@
       };
 
       const HOLD_PRESETS = {
+        backspace: { modifier: 0, keycode: 0x2a },
         enter: { modifier: 0, keycode: 0x28 },
         none: { modifier: 0, keycode: 0 },
         f20: { modifier: 0, keycode: 0x6f },

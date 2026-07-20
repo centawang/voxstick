@@ -7,12 +7,13 @@
 #include "nvs.h"
 
 #define VOX_CONFIG_MAGIC        0x31474656u  // "VFG1", little-endian
-#define VOX_CONFIG_STORE_VER    1
+#define VOX_CONFIG_STORE_VER    2
+#define VOX_CONFIG_STORE_VER_LEGACY 1
 #define VOX_CONFIG_NAMESPACE    "voxstick"
 #define VOX_CONFIG_KEY          "cfg"
 
 #define HID_KEY_F12             0x45
-#define HID_KEY_ENTER           0x28
+#define HID_KEY_BACKSPACE       0x2A
 #define HID_MOD_LEFT_CTRL       0x01
 
 #define LONG_PRESS_MIN_MS       250
@@ -36,7 +37,7 @@ static vox_config_wire_t default_config(void)
         .tap_modifier = HID_MOD_LEFT_CTRL,
         .tap_keycode = HID_KEY_F12,
         .hold_modifier = 0,
-        .hold_keycode = HID_KEY_ENTER,
+        .hold_keycode = HID_KEY_BACKSPACE,
         .reserved = 0,
         .long_press_ms = 600,
         .reserved2 = 0,
@@ -95,8 +96,9 @@ static esp_err_t config_save(vox_config_wire_t const *cfg)
     return ret;
 }
 
-static esp_err_t config_load(vox_config_wire_t *out)
+static esp_err_t config_load(vox_config_wire_t *out, bool *migrated)
 {
+    *migrated = false;
     nvs_handle_t nvs = 0;
     esp_err_t ret = nvs_open(VOX_CONFIG_NAMESPACE, NVS_READONLY, &nvs);
     if (ret != ESP_OK) {
@@ -112,25 +114,42 @@ static esp_err_t config_load(vox_config_wire_t *out)
     }
     if (len != sizeof(store) ||
         store.magic != VOX_CONFIG_MAGIC ||
-        store.version != VOX_CONFIG_STORE_VER ||
-        store.size != sizeof(store) ||
-        !config_valid(&store.data)) {
+        (store.version != VOX_CONFIG_STORE_VER &&
+         store.version != VOX_CONFIG_STORE_VER_LEGACY) ||
+        store.size != sizeof(store)) {
         return ESP_ERR_INVALID_STATE;
     }
 
     *out = store.data;
+    if (store.version == VOX_CONFIG_STORE_VER_LEGACY) {
+        out->hold_modifier = 0;
+        out->hold_keycode = HID_KEY_BACKSPACE;
+        *migrated = true;
+    }
+    if (!config_valid(out)) {
+        return ESP_ERR_INVALID_STATE;
+    }
     return ESP_OK;
 }
 
 void vox_config_init(void)
 {
     vox_config_wire_t cfg = default_config();
-    esp_err_t ret = config_load(&cfg);
+    bool migrated = false;
+    esp_err_t ret = config_load(&cfg, &migrated);
     if (ret == ESP_ERR_NVS_NOT_FOUND || ret == ESP_ERR_NVS_NOT_INITIALIZED) {
         ESP_LOGI(TAG, "config: using defaults");
     } else if (ret != ESP_OK) {
         ESP_LOGW(TAG, "config load failed (%s); using defaults",
                  esp_err_to_name(ret));
+    } else if (migrated) {
+        esp_err_t save_ret = config_save(&cfg);
+        if (save_ret == ESP_OK) {
+            ESP_LOGI(TAG, "config migrated: long press now sends Backspace");
+        } else {
+            ESP_LOGW(TAG, "config migration save failed: %s",
+                     esp_err_to_name(save_ret));
+        }
     }
 
     portENTER_CRITICAL(&s_config_lock);
