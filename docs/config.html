@@ -216,6 +216,13 @@
         border-top: 0;
       }
 
+      .repeat-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(100px, 140px);
+        gap: 12px;
+        align-items: end;
+      }
+
       label,
       .sub-label {
         color: var(--text);
@@ -373,6 +380,10 @@
           grid-template-columns: 1fr;
         }
 
+        .repeat-row {
+          grid-template-columns: 1fr;
+        }
+
         .actions button {
           width: 100%;
         }
@@ -476,7 +487,7 @@
             <dd id="summaryPress">-</dd>
           </dl>
           <p class="fine-print">
-            配置保存在设备 NVS 中。六动作配置需要协议 v2 固件。
+            配置保存在设备 NVS 中。重复动作配置需要协议 v3 固件。
           </p>
         </aside>
       </section>
@@ -487,28 +498,34 @@
 
       const VOX_VID = 0x303a;
       const VOX_PID = 0x8001;
-      const PROTOCOL_VERSION = 2;
+      const PROTOCOL_VERSION = 3;
       const CMD_GET = 1;
       const CMD_SET = 2;
       const CMD_RESET = 3;
       const STATUS_OK = 0;
-      const CONFIG_SIZE = 20;
+      const CONFIG_SIZE = 26;
       const TRANSFER_TIMEOUT_MS = 1500;
 
       const DEFAULT_CONFIG = {
         flatMute: true,
         aSingleModifier: 0,
         aSingleKeycode: 0x28,
+        aSingleRepeat: 1,
         aDoubleModifier: 0x01,
         aDoubleKeycode: 0,
+        aDoubleRepeat: 1,
         aLongModifier: 0,
         aLongKeycode: 0x4f,
+        aLongRepeat: 1,
         bSingleModifier: 0,
         bSingleKeycode: 0x51,
+        bSingleRepeat: 1,
         bDoubleModifier: 0,
         bDoubleKeycode: 0x52,
+        bDoubleRepeat: 1,
         bLongModifier: 0,
         bLongKeycode: 0x50,
+        bLongRepeat: 1,
         longPressMs: 600,
       };
 
@@ -529,6 +546,8 @@
         { value: "downArrow", label: "向下方向键" },
         { value: "upArrow", label: "向上方向键" },
         { value: "backspace", label: "Backspace" },
+        { value: "backspaceRepeat", label: "Backspace × N" },
+        { value: "delete", label: "Delete" },
         { value: "leftCtrlF12", label: "左 Ctrl + F12" },
         { value: "f19", label: "F19" },
         { value: "f20", label: "F20" },
@@ -563,6 +582,7 @@
         { code: 0x73, label: "F24" },
         { code: 0x28, label: "Enter" },
         { code: 0x2a, label: "Backspace" },
+        { code: 0x4c, label: "Delete" },
         { code: 0x4f, label: "向右方向键" },
         { code: 0x50, label: "向左方向键" },
         { code: 0x51, label: "向下方向键" },
@@ -573,17 +593,19 @@
       ];
 
       const ACTION_PRESETS = {
-        enter: { modifier: 0, keycode: 0x28 },
-        leftCtrl: { modifier: 0x01, keycode: 0 },
-        rightArrow: { modifier: 0, keycode: 0x4f },
-        leftArrow: { modifier: 0, keycode: 0x50 },
-        downArrow: { modifier: 0, keycode: 0x51 },
-        upArrow: { modifier: 0, keycode: 0x52 },
-        backspace: { modifier: 0, keycode: 0x2a },
-        leftCtrlF12: { modifier: 0x01, keycode: 0x45 },
-        f19: { modifier: 0, keycode: 0x6e },
-        none: { modifier: 0, keycode: 0 },
-        f20: { modifier: 0, keycode: 0x6f },
+        enter: { modifier: 0, keycode: 0x28, repeatCount: 1 },
+        leftCtrl: { modifier: 0x01, keycode: 0, repeatCount: 1 },
+        rightArrow: { modifier: 0, keycode: 0x4f, repeatCount: 1 },
+        leftArrow: { modifier: 0, keycode: 0x50, repeatCount: 1 },
+        downArrow: { modifier: 0, keycode: 0x51, repeatCount: 1 },
+        upArrow: { modifier: 0, keycode: 0x52, repeatCount: 1 },
+        backspace: { modifier: 0, keycode: 0x2a, repeatCount: 1 },
+        backspaceRepeat: { modifier: 0, keycode: 0x2a, repeatCount: 20 },
+        delete: { modifier: 0, keycode: 0x4c, repeatCount: 1 },
+        leftCtrlF12: { modifier: 0x01, keycode: 0x45, repeatCount: 1 },
+        f19: { modifier: 0, keycode: 0x6e, repeatCount: 1 },
+        none: { modifier: 0, keycode: 0, repeatCount: 1 },
+        f20: { modifier: 0, keycode: 0x6f, repeatCount: 1 },
       };
 
       const STATUS_TEXT = {
@@ -679,13 +701,14 @@
         return names.join(" + ");
       }
 
-      function actionName(modifier, keycode) {
+      function actionName(modifier, keycode, repeatCount = 1) {
         if (keycode === 0) {
           return modifierName(modifier) || "不发送按键";
         }
         const mods = modifierName(modifier);
         const key = keyName(keycode);
-        return mods ? `${mods} + ${key}` : key;
+        const action = mods ? `${mods} + ${key}` : key;
+        return repeatCount > 1 ? `${action} × ${repeatCount}` : action;
       }
 
       function setModifierUi(kind, mask) {
@@ -718,9 +741,16 @@
         select.append(option);
       }
 
-      function findPreset(map, modifier, keycode) {
+      function findPreset(map, modifier, keycode, repeatCount) {
         for (const [name, preset] of Object.entries(map)) {
-          if (preset.modifier === modifier && preset.keycode === keycode) {
+          const repeatMatches = name === "backspaceRepeat"
+            ? repeatCount > 1
+            : preset.repeatCount === repeatCount;
+          if (
+            preset.modifier === modifier &&
+            preset.keycode === keycode &&
+            repeatMatches
+          ) {
             return name;
           }
         }
@@ -753,6 +783,18 @@
                       <select id="${kind}Key"></select>
                     </div>
                   </div>
+                  <div id="${kind}RepeatWrap" class="repeat-row hidden">
+                    <label for="${kind}Repeat">Backspace 重复次数（2–100）</label>
+                    <input
+                      id="${kind}Repeat"
+                      type="number"
+                      min="2"
+                      max="100"
+                      step="1"
+                      value="20"
+                      inputmode="numeric"
+                    />
+                  </div>
                 </div>
               `,
             )
@@ -760,12 +802,18 @@
         }
       }
 
-      function writeActionUi(kind, modifier, keycode) {
-        const preset = findPreset(ACTION_PRESETS, modifier, keycode);
+      function writeActionUi(kind, modifier, keycode, repeatCount) {
+        const preset = findPreset(
+          ACTION_PRESETS,
+          modifier,
+          keycode,
+          repeatCount,
+        );
         $(`${kind}Preset`).value = preset;
         setModifierUi(kind, modifier);
         ensureKeyOption(`${kind}Key`, keycode);
         $(`${kind}Key`).value = String(keycode);
+        $(`${kind}Repeat`).value = String(repeatCount > 1 ? repeatCount : 20);
         renderCustomVisibility(kind);
       }
 
@@ -775,14 +823,21 @@
           setModifierUi(kind, preset.modifier);
           ensureKeyOption(`${kind}Key`, preset.keycode);
           $(`${kind}Key`).value = String(preset.keycode);
+          $(`${kind}Repeat`).value = String(preset.repeatCount);
         }
         renderCustomVisibility(kind);
       }
 
       function readActionUi(kind) {
+        const repeated = $(`${kind}Preset`).value === "backspaceRepeat";
+        const repeatCount = repeated ? Number($(`${kind}Repeat`).value) : 1;
+        if (repeated && (repeatCount < 2 || repeatCount > 100)) {
+          throw new Error("Backspace 重复次数必须在 2 到 100 之间。");
+        }
         return {
           modifier: getModifierUi(kind),
           keycode: Number($(`${kind}Key`).value),
+          repeatCount,
         };
       }
 
@@ -790,6 +845,10 @@
         $(`${kind}Custom`).classList.toggle(
           "hidden",
           $(`${kind}Preset`).value !== "custom",
+        );
+        $(`${kind}RepeatWrap`).classList.toggle(
+          "hidden",
+          $(`${kind}Preset`).value !== "backspaceRepeat",
         );
       }
 
@@ -800,6 +859,7 @@
             kind,
             config[`${kind}Modifier`],
             config[`${kind}Keycode`],
+            config[`${kind}Repeat`],
           );
         }
         $("longPressMs").value = String(config.longPressMs);
@@ -819,6 +879,7 @@
           const action = readActionUi(kind);
           config[`${kind}Modifier`] = action.modifier;
           config[`${kind}Keycode`] = action.keycode;
+          config[`${kind}Repeat`] = action.repeatCount;
         }
         return config;
       }
@@ -845,6 +906,7 @@
           $(summary).textContent = actionName(
             config[`${kind}Modifier`],
             config[`${kind}Keycode`],
+            config[`${kind}Repeat`],
           );
         }
         $("summaryPress").textContent = `${config.longPressMs} ms`;
@@ -932,7 +994,7 @@
         }
         const response = await withTimeout(
           state.device.transferIn(state.inEndpoint, 64),
-          "读取配置超时，请先刷入支持六动作配置的协议 v2 固件。",
+          "读取配置超时，请先刷入支持重复动作配置的协议 v3 固件。",
         );
         return parseResponse(response);
       }
@@ -942,13 +1004,14 @@
         const view = new DataView(payload.buffer);
         payload[0] = config.flatMute ? 1 : 0;
         payload[1] = 0;
-        const offsets = [2, 4, 6, 8, 10, 12];
+        const offsets = [2, 5, 8, 11, 14, 17];
         ACTION_DEFS.forEach(({ kind }, index) => {
           payload[offsets[index]] = config[`${kind}Modifier`];
           payload[offsets[index] + 1] = config[`${kind}Keycode`];
+          payload[offsets[index] + 2] = config[`${kind}Repeat`];
         });
-        view.setUint16(14, config.longPressMs, true);
-        view.setUint32(16, 0, true);
+        view.setUint16(20, config.longPressMs, true);
+        view.setUint32(22, 0, true);
         return payload;
       }
 
@@ -965,17 +1028,23 @@
           flatMute: payload[0] !== 0,
           aSingleModifier: payload[2],
           aSingleKeycode: payload[3],
-          aDoubleModifier: payload[4],
-          aDoubleKeycode: payload[5],
-          aLongModifier: payload[6],
-          aLongKeycode: payload[7],
-          bSingleModifier: payload[8],
-          bSingleKeycode: payload[9],
-          bDoubleModifier: payload[10],
-          bDoubleKeycode: payload[11],
-          bLongModifier: payload[12],
-          bLongKeycode: payload[13],
-          longPressMs: view.getUint16(14, true),
+          aSingleRepeat: payload[4],
+          aDoubleModifier: payload[5],
+          aDoubleKeycode: payload[6],
+          aDoubleRepeat: payload[7],
+          aLongModifier: payload[8],
+          aLongKeycode: payload[9],
+          aLongRepeat: payload[10],
+          bSingleModifier: payload[11],
+          bSingleKeycode: payload[12],
+          bSingleRepeat: payload[13],
+          bDoubleModifier: payload[14],
+          bDoubleKeycode: payload[15],
+          bDoubleRepeat: payload[16],
+          bLongModifier: payload[17],
+          bLongKeycode: payload[18],
+          bLongRepeat: payload[19],
+          longPressMs: view.getUint16(20, true),
         };
       }
 

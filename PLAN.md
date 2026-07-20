@@ -39,6 +39,8 @@ in whatever app is focused.
 - BtnB tap/double/long defaults → `Down Arrow` / `Up Arrow` / `Left Arrow`
 - All six runtime button actions are configurable over WebUSB; the 350 ms
   double-click window stays fixed and both buttons share the long-press threshold
+- Presets include `Delete` and asynchronous `Backspace × N` batches; `N`
+  defaults to 20 and is configurable from 2 to 100
 - Shake → 20 complete `Backspace` taps, dispatched outside the IMU task
 - Effective microphone state `muted → live` for two continuous seconds → one
   `Left Ctrl` tap; muting again cancels the timer, while boot and USB reconnect

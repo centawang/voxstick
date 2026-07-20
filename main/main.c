@@ -22,6 +22,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
+#include "freertos/queue.h"
 #include "esp_log.h"
 #include "esp_err.h"
 #include "esp_check.h"
@@ -157,6 +158,12 @@ static const char *TAG = "voxstick";
 #define MIC_STATE_POLL_MS        20
 #define MIC_STATE_USB_SETTLE_MS  500
 #define MIC_UNMUTE_HOLD_MS       2000
+#define HID_ACTION_QUEUE_LENGTH  8
+
+typedef struct {
+    const char *gesture;
+    vox_hid_action_t action;
+} hid_action_job_t;
 
 // ---- Globals -------------------------------------------------------------
 static i2c_master_bus_handle_t  g_i2c_bus     = NULL;
@@ -173,6 +180,7 @@ static volatile uint32_t        g_vad_level = 0;
 static volatile bool            g_vad_active = false;
 static volatile bool            g_vad_display_enabled = false;
 static SemaphoreHandle_t        g_hid_mutex = NULL;
+static QueueHandle_t            g_hid_action_queue = NULL;
 static TaskHandle_t             g_shake_backspace_task_handle = NULL;
 // IMU orientation-based mute: true when the BMI270 reports the stick is
 // lying flat. ORed into the audio path so flat-on-table = silence,
@@ -1387,9 +1395,48 @@ static bool hid_send_action(const char *gesture, vox_hid_action_t action)
         return true;
     }
 
-    ESP_LOGI(TAG, "%s -> 0x%02x+0x%02x",
-             gesture, action.modifier, action.keycode);
-    return hid_send_tap(action.modifier, action.keycode);
+    if (action.repeat_count <= 1) {
+        ESP_LOGI(TAG, "%s -> 0x%02x+0x%02x",
+                 gesture, action.modifier, action.keycode);
+        return hid_send_tap(action.modifier, action.keycode);
+    }
+
+    if (g_hid_action_queue == NULL) {
+        ESP_LOGW(TAG, "%s repeat ignored; HID action worker unavailable",
+                 gesture);
+        return false;
+    }
+
+    hid_action_job_t job = {
+        .gesture = gesture,
+        .action = action,
+    };
+    if (xQueueSend(g_hid_action_queue, &job, 0) != pdTRUE) {
+        ESP_LOGW(TAG, "%s repeat ignored; HID action queue full", gesture);
+        return false;
+    }
+
+    ESP_LOGI(TAG, "%s queued -> 0x%02x+0x%02x x%u",
+             gesture, action.modifier, action.keycode, action.repeat_count);
+    return true;
+}
+
+static void hid_action_worker_task(void *arg)
+{
+    (void)arg;
+    hid_action_job_t job = {0};
+
+    while (xQueueReceive(g_hid_action_queue, &job, portMAX_DELAY) == pdTRUE) {
+        uint8_t sent = 0;
+        while (sent < job.action.repeat_count && tud_mounted()) {
+            if (!hid_send_tap(job.action.modifier, job.action.keycode)) {
+                break;
+            }
+            sent++;
+        }
+        ESP_LOGI(TAG, "%s repeat batch: %u/%u sent",
+                 job.gesture, sent, job.action.repeat_count);
+    }
 }
 
 static void shake_backspace_task(void *arg)
@@ -1713,6 +1760,21 @@ void app_main(void)
 #endif
 
     buttons_init();
+
+#if !VOX_DEBUG_NO_UAC
+    g_hid_action_queue = xQueueCreate(HID_ACTION_QUEUE_LENGTH,
+                                      sizeof(hid_action_job_t));
+    if (g_hid_action_queue == NULL ||
+        xTaskCreate(hid_action_worker_task, "hid_action", 3072,
+                    NULL, 4, NULL) != pdPASS) {
+        if (g_hid_action_queue != NULL) {
+            vQueueDelete(g_hid_action_queue);
+            g_hid_action_queue = NULL;
+        }
+        ESP_LOGE(TAG, "configurable HID action worker creation failed");
+    }
+#endif
+
     xTaskCreate(button_task, "btn", 2048, NULL, 5, NULL);
     ESP_LOGI(TAG, "buttons up (BtnA=GPIO%d BtnB=GPIO%d)",
              BTN_A_GPIO, BTN_B_GPIO);

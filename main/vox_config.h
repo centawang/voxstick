@@ -9,8 +9,9 @@
 extern "C" {
 #endif
 
-#define VOX_CONFIG_PROTOCOL_VERSION        2
-#define VOX_CONFIG_PROTOCOL_VERSION_LEGACY 1
+#define VOX_CONFIG_PROTOCOL_VERSION     3
+#define VOX_CONFIG_PROTOCOL_VERSION_V2  2
+#define VOX_CONFIG_PROTOCOL_VERSION_V1  1
 
 #define VOX_CONFIG_CMD_GET   1
 #define VOX_CONFIG_CMD_SET   2
@@ -24,7 +25,13 @@ extern "C" {
 typedef struct __attribute__((packed)) {
     uint8_t modifier;
     uint8_t keycode;
+    uint8_t repeat_count;
 } vox_hid_action_t;
+
+typedef struct __attribute__((packed)) {
+    uint8_t modifier;
+    uint8_t keycode;
+} vox_hid_action_v2_t;
 
 typedef struct __attribute__((packed)) {
     uint8_t  flat_mute_enabled;
@@ -41,6 +48,19 @@ typedef struct __attribute__((packed)) {
 
 typedef struct __attribute__((packed)) {
     uint8_t  flat_mute_enabled;
+    uint8_t  reserved;
+    vox_hid_action_v2_t btn_a_single;
+    vox_hid_action_v2_t btn_a_double;
+    vox_hid_action_v2_t btn_a_long;
+    vox_hid_action_v2_t btn_b_single;
+    vox_hid_action_v2_t btn_b_double;
+    vox_hid_action_v2_t btn_b_long;
+    uint16_t long_press_ms;
+    uint32_t reserved2;
+} vox_config_v2_wire_t;
+
+typedef struct __attribute__((packed)) {
+    uint8_t  flat_mute_enabled;
     uint8_t  tap_modifier;
     uint8_t  tap_keycode;
     uint8_t  hold_modifier;
@@ -50,27 +70,29 @@ typedef struct __attribute__((packed)) {
     uint32_t reserved2;
 } vox_config_v1_wire_t;
 
-_Static_assert(sizeof(vox_hid_action_t) == 2, "HID action wire size changed");
+_Static_assert(sizeof(vox_hid_action_t) == 3, "HID action wire size changed");
+_Static_assert(sizeof(vox_hid_action_v2_t) == 2, "v2 HID action size changed");
 _Static_assert(sizeof(vox_config_v1_wire_t) == 12, "v1 config wire size changed");
-_Static_assert(sizeof(vox_config_wire_t) == 20, "v2 config wire size changed");
+_Static_assert(sizeof(vox_config_v2_wire_t) == 20, "v2 config wire size changed");
+_Static_assert(sizeof(vox_config_wire_t) == 26, "v3 config wire size changed");
 _Static_assert(offsetof(vox_config_wire_t, flat_mute_enabled) == 0,
                "v2 flat-mute offset changed");
 _Static_assert(offsetof(vox_config_wire_t, btn_a_single) == 2,
-               "v2 BtnA single offset changed");
-_Static_assert(offsetof(vox_config_wire_t, btn_a_double) == 4,
-               "v2 BtnA double offset changed");
-_Static_assert(offsetof(vox_config_wire_t, btn_a_long) == 6,
-               "v2 BtnA long offset changed");
-_Static_assert(offsetof(vox_config_wire_t, btn_b_single) == 8,
-               "v2 BtnB single offset changed");
-_Static_assert(offsetof(vox_config_wire_t, btn_b_double) == 10,
-               "v2 BtnB double offset changed");
-_Static_assert(offsetof(vox_config_wire_t, btn_b_long) == 12,
-               "v2 BtnB long offset changed");
-_Static_assert(offsetof(vox_config_wire_t, long_press_ms) == 14,
-               "v2 long-press offset changed");
-_Static_assert(offsetof(vox_config_wire_t, reserved2) == 16,
-               "v2 reserved offset changed");
+               "v3 BtnA single offset changed");
+_Static_assert(offsetof(vox_config_wire_t, btn_a_double) == 5,
+               "v3 BtnA double offset changed");
+_Static_assert(offsetof(vox_config_wire_t, btn_a_long) == 8,
+               "v3 BtnA long offset changed");
+_Static_assert(offsetof(vox_config_wire_t, btn_b_single) == 11,
+               "v3 BtnB single offset changed");
+_Static_assert(offsetof(vox_config_wire_t, btn_b_double) == 14,
+               "v3 BtnB double offset changed");
+_Static_assert(offsetof(vox_config_wire_t, btn_b_long) == 17,
+               "v3 BtnB long offset changed");
+_Static_assert(offsetof(vox_config_wire_t, long_press_ms) == 20,
+               "v3 long-press offset changed");
+_Static_assert(offsetof(vox_config_wire_t, reserved2) == 22,
+               "v3 reserved offset changed");
 
 void vox_config_init(void);
 void vox_config_get(vox_config_wire_t *out);

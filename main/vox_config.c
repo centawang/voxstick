@@ -7,14 +7,16 @@
 #include "nvs.h"
 
 #define VOX_CONFIG_MAGIC        0x31474656u  // "VFG1", little-endian
-#define VOX_CONFIG_STORE_VER    5
+#define VOX_CONFIG_STORE_VER    6
 #define VOX_CONFIG_STORE_VER_MIN_LEGACY 1
 #define VOX_CONFIG_STORE_VER_MAX_LEGACY 4
+#define VOX_CONFIG_STORE_VER_V5 5
 #define VOX_CONFIG_NAMESPACE    "voxstick"
 #define VOX_CONFIG_KEY          "cfg"
 
 #define HID_MOD_LEFT_CTRL       0x01
 #define HID_KEY_ENTER           0x28
+#define HID_KEY_BACKSPACE       0x2A
 #define HID_KEY_ARROW_RIGHT     0x4F
 #define HID_KEY_ARROW_LEFT      0x50
 #define HID_KEY_ARROW_DOWN      0x51
@@ -22,6 +24,8 @@
 
 #define LONG_PRESS_MIN_MS       250
 #define LONG_PRESS_MAX_MS       2000
+#define ACTION_REPEAT_MIN       1
+#define ACTION_REPEAT_MAX       100
 
 typedef struct __attribute__((packed)) {
     uint32_t magic;
@@ -37,9 +41,18 @@ typedef struct __attribute__((packed)) {
     vox_config_v1_wire_t data;
 } vox_config_legacy_store_t;
 
+typedef struct __attribute__((packed)) {
+    uint32_t magic;
+    uint16_t version;
+    uint16_t size;
+    vox_config_v2_wire_t data;
+} vox_config_v5_store_t;
+
 _Static_assert(sizeof(vox_config_legacy_store_t) == 20,
                "legacy config store size changed");
-_Static_assert(sizeof(vox_config_store_t) == 28,
+_Static_assert(sizeof(vox_config_v5_store_t) == 28,
+               "v5 config store size changed");
+_Static_assert(sizeof(vox_config_store_t) == 34,
                "current config store size changed");
 
 static const char *TAG = "voxstick";
@@ -51,12 +64,12 @@ static vox_config_wire_t default_config(void)
     return (vox_config_wire_t) {
         .flat_mute_enabled = 1,
         .reserved = 0,
-        .btn_a_single = { .modifier = 0, .keycode = HID_KEY_ENTER },
-        .btn_a_double = { .modifier = HID_MOD_LEFT_CTRL, .keycode = 0 },
-        .btn_a_long = { .modifier = 0, .keycode = HID_KEY_ARROW_RIGHT },
-        .btn_b_single = { .modifier = 0, .keycode = HID_KEY_ARROW_DOWN },
-        .btn_b_double = { .modifier = 0, .keycode = HID_KEY_ARROW_UP },
-        .btn_b_long = { .modifier = 0, .keycode = HID_KEY_ARROW_LEFT },
+        .btn_a_single = { .modifier = 0, .keycode = HID_KEY_ENTER, .repeat_count = 1 },
+        .btn_a_double = { .modifier = HID_MOD_LEFT_CTRL, .keycode = 0, .repeat_count = 1 },
+        .btn_a_long = { .modifier = 0, .keycode = HID_KEY_ARROW_RIGHT, .repeat_count = 1 },
+        .btn_b_single = { .modifier = 0, .keycode = HID_KEY_ARROW_DOWN, .repeat_count = 1 },
+        .btn_b_double = { .modifier = 0, .keycode = HID_KEY_ARROW_UP, .repeat_count = 1 },
+        .btn_b_long = { .modifier = 0, .keycode = HID_KEY_ARROW_LEFT, .repeat_count = 1 },
         .long_press_ms = 600,
         .reserved2 = 0,
     };
@@ -64,6 +77,14 @@ static vox_config_wire_t default_config(void)
 
 static bool action_valid(vox_hid_action_t action)
 {
+    if (action.repeat_count < ACTION_REPEAT_MIN ||
+        action.repeat_count > ACTION_REPEAT_MAX) {
+        return false;
+    }
+    if (action.repeat_count > 1 &&
+        (action.modifier != 0 || action.keycode != HID_KEY_BACKSPACE)) {
+        return false;
+    }
     if (action.keycode == 0) {
         return true;
     }
@@ -148,6 +169,44 @@ static esp_err_t config_load(vox_config_wire_t *out, bool *migrated)
         return ESP_OK;
     }
 
+    if (len == sizeof(vox_config_v5_store_t)) {
+        vox_config_v5_store_t store = {0};
+        size_t read_len = sizeof(store);
+        ret = nvs_get_blob(nvs, VOX_CONFIG_KEY, &store, &read_len);
+        nvs_close(nvs);
+        if (ret != ESP_OK) {
+            return ret;
+        }
+        if (read_len != sizeof(store) ||
+            store.magic != VOX_CONFIG_MAGIC ||
+            store.version != VOX_CONFIG_STORE_VER_V5 ||
+            store.size != sizeof(store)) {
+            return ESP_ERR_INVALID_STATE;
+        }
+
+        vox_config_wire_t migrated_cfg = default_config();
+        migrated_cfg.flat_mute_enabled = store.data.flat_mute_enabled;
+        migrated_cfg.btn_a_single.modifier = store.data.btn_a_single.modifier;
+        migrated_cfg.btn_a_single.keycode = store.data.btn_a_single.keycode;
+        migrated_cfg.btn_a_double.modifier = store.data.btn_a_double.modifier;
+        migrated_cfg.btn_a_double.keycode = store.data.btn_a_double.keycode;
+        migrated_cfg.btn_a_long.modifier = store.data.btn_a_long.modifier;
+        migrated_cfg.btn_a_long.keycode = store.data.btn_a_long.keycode;
+        migrated_cfg.btn_b_single.modifier = store.data.btn_b_single.modifier;
+        migrated_cfg.btn_b_single.keycode = store.data.btn_b_single.keycode;
+        migrated_cfg.btn_b_double.modifier = store.data.btn_b_double.modifier;
+        migrated_cfg.btn_b_double.keycode = store.data.btn_b_double.keycode;
+        migrated_cfg.btn_b_long.modifier = store.data.btn_b_long.modifier;
+        migrated_cfg.btn_b_long.keycode = store.data.btn_b_long.keycode;
+        migrated_cfg.long_press_ms = store.data.long_press_ms;
+        if (!config_valid(&migrated_cfg)) {
+            return ESP_ERR_INVALID_STATE;
+        }
+        *out = migrated_cfg;
+        *migrated = true;
+        return ESP_OK;
+    }
+
     if (len == sizeof(vox_config_legacy_store_t)) {
         vox_config_legacy_store_t legacy = {0};
         size_t read_len = sizeof(legacy);
@@ -186,8 +245,8 @@ static esp_err_t config_load(vox_config_wire_t *out, bool *migrated)
 
 static void log_action(const char *name, vox_hid_action_t action)
 {
-    ESP_LOGI(TAG, "config: %-12s = 0x%02x+0x%02x",
-             name, action.modifier, action.keycode);
+    ESP_LOGI(TAG, "config: %-12s = 0x%02x+0x%02x x%u",
+             name, action.modifier, action.keycode, action.repeat_count);
 }
 
 void vox_config_init(void)

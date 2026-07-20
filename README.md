@@ -123,7 +123,8 @@ For chip recovery (no buttons), see [`tools/trigger-download.sh`](tools/trigger-
 Use the [WebUSB config page](https://openbrt.github.io/voxstick/config.html)
 to change all six runtime button actions and the shared long-press threshold
 without rebuilding firmware. The 350 ms double-click window and boot-time BtnA
-ROM recovery gesture remain fixed.
+ROM recovery gesture remain fixed. Built-in action presets include `Delete` and
+`Backspace × N`; `N` defaults to 20 and can be set from 2 to 100.
 Boot and USB reconnect establish the microphone-state baseline and do not send
 Left Ctrl. Muting again within the two-second window cancels the pending key.
 

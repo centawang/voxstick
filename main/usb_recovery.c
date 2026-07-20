@@ -65,6 +65,51 @@ static vox_config_v1_wire_t config_v1_from_current(vox_config_wire_t const *cfg)
     };
 }
 
+static vox_hid_action_v2_t action_v2_from_current(vox_hid_action_t action)
+{
+    return (vox_hid_action_v2_t) {
+        .modifier = action.modifier,
+        .keycode = action.keycode,
+    };
+}
+
+static vox_config_v2_wire_t config_v2_from_current(vox_config_wire_t const *cfg)
+{
+    return (vox_config_v2_wire_t) {
+        .flat_mute_enabled = cfg->flat_mute_enabled,
+        .reserved = 0,
+        .btn_a_single = action_v2_from_current(cfg->btn_a_single),
+        .btn_a_double = action_v2_from_current(cfg->btn_a_double),
+        .btn_a_long = action_v2_from_current(cfg->btn_a_long),
+        .btn_b_single = action_v2_from_current(cfg->btn_b_single),
+        .btn_b_double = action_v2_from_current(cfg->btn_b_double),
+        .btn_b_long = action_v2_from_current(cfg->btn_b_long),
+        .long_press_ms = cfg->long_press_ms,
+        .reserved2 = 0,
+    };
+}
+
+static vox_hid_action_t action_from_v2(vox_hid_action_v2_t action)
+{
+    return (vox_hid_action_t) {
+        .modifier = action.modifier,
+        .keycode = action.keycode,
+        .repeat_count = 1,
+    };
+}
+
+static vox_hid_action_t action_merge_v2(vox_hid_action_t current,
+                                        vox_hid_action_v2_t legacy)
+{
+    vox_hid_action_t merged = action_from_v2(legacy);
+    if (current.modifier == legacy.modifier &&
+        current.keycode == legacy.keycode &&
+        current.repeat_count > 1) {
+        merged.repeat_count = current.repeat_count;
+    }
+    return merged;
+}
+
 static void write_config_response(uint8_t itf, uint8_t protocol_version,
                                   uint8_t status,
                                   vox_config_wire_t const *cfg)
@@ -79,8 +124,12 @@ static void write_config_response(uint8_t itf, uint8_t protocol_version,
     uint16_t payload_len = 0;
 
     if (status == VOX_CONFIG_STATUS_OK && cfg != NULL) {
-        if (protocol_version == VOX_CONFIG_PROTOCOL_VERSION_LEGACY) {
+        if (protocol_version == VOX_CONFIG_PROTOCOL_VERSION_V1) {
             vox_config_v1_wire_t legacy = config_v1_from_current(cfg);
+            payload_len = sizeof(legacy);
+            memcpy(resp + CFG_HEADER_LEN, &legacy, payload_len);
+        } else if (protocol_version == VOX_CONFIG_PROTOCOL_VERSION_V2) {
+            vox_config_v2_wire_t legacy = config_v2_from_current(cfg);
             payload_len = sizeof(legacy);
             memcpy(resp + CFG_HEADER_LEN, &legacy, payload_len);
         } else {
@@ -121,7 +170,8 @@ static bool handle_config_packet(uint8_t itf,
     uint8_t command = buffer[5];
     uint16_t payload_len = read_u16_le(buffer + 6);
     if ((version != VOX_CONFIG_PROTOCOL_VERSION &&
-         version != VOX_CONFIG_PROTOCOL_VERSION_LEGACY) ||
+            version != VOX_CONFIG_PROTOCOL_VERSION_V2 &&
+            version != VOX_CONFIG_PROTOCOL_VERSION_V1) ||
         payload_len > bufsize - CFG_HEADER_LEN ||
         CFG_HEADER_LEN + payload_len != bufsize) {
         write_config_response(itf, version, VOX_CONFIG_STATUS_BAD_REQ, NULL);
@@ -142,7 +192,7 @@ static bool handle_config_packet(uint8_t itf,
         return true;
 
     case VOX_CONFIG_CMD_SET:
-        if (version == VOX_CONFIG_PROTOCOL_VERSION_LEGACY) {
+        if (version == VOX_CONFIG_PROTOCOL_VERSION_V1) {
             if (payload_len != sizeof(vox_config_v1_wire_t)) {
                 write_config_response(itf, version,
                                       VOX_CONFIG_STATUS_BAD_REQ, NULL);
@@ -152,10 +202,41 @@ static bool handle_config_packet(uint8_t itf,
             memcpy(&legacy, buffer + CFG_HEADER_LEN, sizeof(legacy));
             vox_config_get(&cfg);
             cfg.flat_mute_enabled = legacy.flat_mute_enabled;
-            cfg.btn_a_single.modifier = legacy.tap_modifier;
-            cfg.btn_a_single.keycode = legacy.tap_keycode;
-            cfg.btn_a_long.modifier = legacy.hold_modifier;
-            cfg.btn_a_long.keycode = legacy.hold_keycode;
+            cfg.btn_a_single = action_merge_v2(
+                cfg.btn_a_single,
+                (vox_hid_action_v2_t) {
+                    .modifier = legacy.tap_modifier,
+                    .keycode = legacy.tap_keycode,
+                });
+            cfg.btn_a_long = action_merge_v2(
+                cfg.btn_a_long,
+                (vox_hid_action_v2_t) {
+                    .modifier = legacy.hold_modifier,
+                    .keycode = legacy.hold_keycode,
+                });
+            cfg.long_press_ms = legacy.long_press_ms;
+        } else if (version == VOX_CONFIG_PROTOCOL_VERSION_V2) {
+            if (payload_len != sizeof(vox_config_v2_wire_t)) {
+                write_config_response(itf, version,
+                                      VOX_CONFIG_STATUS_BAD_REQ, NULL);
+                return true;
+            }
+            vox_config_v2_wire_t legacy = {0};
+            memcpy(&legacy, buffer + CFG_HEADER_LEN, sizeof(legacy));
+            vox_config_get(&cfg);
+            cfg.flat_mute_enabled = legacy.flat_mute_enabled;
+            cfg.btn_a_single = action_merge_v2(cfg.btn_a_single,
+                                               legacy.btn_a_single);
+            cfg.btn_a_double = action_merge_v2(cfg.btn_a_double,
+                                               legacy.btn_a_double);
+            cfg.btn_a_long = action_merge_v2(cfg.btn_a_long,
+                                             legacy.btn_a_long);
+            cfg.btn_b_single = action_merge_v2(cfg.btn_b_single,
+                                               legacy.btn_b_single);
+            cfg.btn_b_double = action_merge_v2(cfg.btn_b_double,
+                                               legacy.btn_b_double);
+            cfg.btn_b_long = action_merge_v2(cfg.btn_b_long,
+                                             legacy.btn_b_long);
             cfg.long_press_ms = legacy.long_press_ms;
         } else {
             if (payload_len != sizeof(cfg)) {
