@@ -36,8 +36,8 @@ in whatever app is focused.
 - USB descriptor → composite UAC + HID Consumer Control (reference
   [Alexaznavour/micemul](https://github.com/Alexaznavour/micemul))
 - BtnA tap → configurable PTT shortcut; double-tap → `Enter`; long-press →
-  `Backspace`
-- BtnB tap → `Down Arrow`; double-tap → `Up Arrow`
+  `Right Arrow`
+- BtnB tap → `Down Arrow`; double-tap → `Up Arrow`; long-press → `Left Arrow`
 - LCD: minimum viable indicator — red dot in top-right while button is held
 - Mac side: install [VoiceInk](https://github.com/Beingpax/VoiceInk),
   - input device = `StickS3-Mic`

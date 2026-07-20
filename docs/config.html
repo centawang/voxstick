@@ -421,8 +421,10 @@
               </div>
 
               <div class="setting">
-                <label for="holdPreset">长按触发键</label>
+                <label for="holdPreset">BtnA 长按触发键</label>
                 <select id="holdPreset">
+                  <option value="rightArrow">向右方向键</option>
+                  <option value="leftArrow">向左方向键</option>
                   <option value="backspace">Backspace</option>
                   <option value="enter">Enter</option>
                   <option value="none">不发送按键</option>
@@ -439,7 +441,9 @@
                     <select id="holdKey"></select>
                   </div>
                 </div>
-                <p class="fine-print">双击 BtnA 固定发送 Enter。</p>
+                <p class="fine-print">
+                  双击 BtnA 固定发送 Enter；长按 BtnB 固定发送向左方向键。
+                </p>
               </div>
 
               <div class="setting">
@@ -515,7 +519,7 @@
         tapModifier: 0x01,
         tapKeycode: 0x45,
         holdModifier: 0,
-        holdKeycode: 0x2a,
+        holdKeycode: 0x4f,
         longPressMs: 600,
       };
 
@@ -546,6 +550,10 @@
         { code: 0x73, label: "F24" },
         { code: 0x28, label: "Enter" },
         { code: 0x2a, label: "Backspace" },
+        { code: 0x4f, label: "向右方向键" },
+        { code: 0x50, label: "向左方向键" },
+        { code: 0x51, label: "向下方向键" },
+        { code: 0x52, label: "向上方向键" },
         { code: 0x2c, label: "Space" },
         { code: 0x2b, label: "Tab" },
         { code: 0x29, label: "Esc" },
@@ -559,6 +567,8 @@
       };
 
       const HOLD_PRESETS = {
+        rightArrow: { modifier: 0, keycode: 0x4f },
+        leftArrow: { modifier: 0, keycode: 0x50 },
         backspace: { modifier: 0, keycode: 0x2a },
         enter: { modifier: 0, keycode: 0x28 },
         none: { modifier: 0, keycode: 0 },

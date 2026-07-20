@@ -1000,8 +1000,8 @@ static void imu_task(void *arg)
                         if (gap >= pdMS_TO_TICKS(IMU_SHAKE_MIN_GAP_MS) &&
                             gap <= pdMS_TO_TICKS(IMU_SHAKE_WINDOW_MS) &&
                             opposing) {
-                            bool sent = hid_send_tap(KEYBOARD_MODIFIER_LEFTCTRL, 0);
-                            ESP_LOGI(TAG, "imu: shake -> Left Ctrl (%s)",
+                            bool sent = hid_send_tap(0, HID_KEY_BACKSPACE);
+                            ESP_LOGI(TAG, "imu: shake -> Backspace (%s)",
                                      sent ? "sent" : "USB not ready");
                             shake_armed = false;
                             rearm_timer_running = false;
@@ -1217,8 +1217,8 @@ bool tud_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage,
 
 // =========================================================================
 // Buttons. BtnA tap and long-press output are configurable through NVS;
-// defaults are Left Ctrl+F12 and Backspace. BtnA double-tap sends Enter.
-// BtnB tap/double-tap sends Down/Up Arrow.
+// defaults are Left Ctrl+F12 and Right Arrow. BtnA double-tap sends Enter.
+// BtnB tap/double-tap/long-press sends Down/Up/Left Arrow.
 //
 // USB HID Keyboard/Keypad usage page (0x07):
 //   F13 = 0x68 .. F24 = 0x73   (TinyUSB also exposes HID_KEY_F13..F24)
@@ -1388,6 +1388,9 @@ static void button_task(void *arg)
     bool b_committed = true;
     bool b_pending   = true;
     int  b_stable    = 0;
+    TickType_t b_press_start = 0;
+    uint16_t b_long_press_ms = 0;
+    bool b_long_latched = false;
     bool b_click_pending = false;
     bool b_second_press = false;
     TickType_t b_first_release = 0;
@@ -1456,7 +1459,7 @@ static void button_task(void *arg)
 
         // While still held, switch to blue once the long-press threshold is
         // crossed so the user knows releasing now will send the configured
-        // hold action (Backspace by default), not a click gesture.
+        // hold action (Right Arrow by default), not a click gesture.
         if (!a_committed && !a_long_latched) {
             TickType_t held = xTaskGetTickCount() - a_press_start;
             if (pdTICKS_TO_MS(held) >= a_press_cfg.long_press_ms) {
@@ -1484,6 +1487,11 @@ static void button_task(void *arg)
             b_committed = b_pending;
             if (!b_committed) {
                 TickType_t now = xTaskGetTickCount();
+                vox_config_wire_t cfg = {0};
+                vox_config_get(&cfg);
+                b_press_start = now;
+                b_long_press_ms = cfg.long_press_ms;
+                b_long_latched = false;
                 if (b_click_pending &&
                     now - b_first_release <=
                         pdMS_TO_TICKS(BTN_DOUBLE_CLICK_MS)) {
@@ -1499,7 +1507,15 @@ static void button_task(void *arg)
                     ESP_LOGI(TAG, "btn B down");
                 }
             } else {
-                if (b_second_press) {
+                TickType_t held = xTaskGetTickCount() - b_press_start;
+                bool is_long = b_long_latched ||
+                    pdTICKS_TO_MS(held) >= b_long_press_ms;
+                if (is_long) {
+                    ESP_LOGI(TAG, "btn B long -> Arrow Left");
+                    hid_send_tap(0, HID_KEY_ARROW_LEFT);
+                    b_click_pending = false;
+                    b_second_press = false;
+                } else if (b_second_press) {
                     ESP_LOGI(TAG, "btn B double -> Arrow Up");
                     hid_send_tap(0, HID_KEY_ARROW_UP);
                     b_click_pending = false;
@@ -1509,6 +1525,15 @@ static void button_task(void *arg)
                     b_first_release = xTaskGetTickCount();
                     ESP_LOGI(TAG, "btn B first click; waiting for double");
                 }
+            }
+        }
+
+        if (!b_committed && !b_long_latched) {
+            TickType_t held = xTaskGetTickCount() - b_press_start;
+            if (pdTICKS_TO_MS(held) >= b_long_press_ms) {
+                b_long_latched = true;
+                b_click_pending = false;
+                b_second_press = false;
             }
         }
 

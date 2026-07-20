@@ -7,13 +7,14 @@
 #include "nvs.h"
 
 #define VOX_CONFIG_MAGIC        0x31474656u  // "VFG1", little-endian
-#define VOX_CONFIG_STORE_VER    2
-#define VOX_CONFIG_STORE_VER_LEGACY 1
+#define VOX_CONFIG_STORE_VER    3
+#define VOX_CONFIG_STORE_VER_V1 1
+#define VOX_CONFIG_STORE_VER_V2 2
 #define VOX_CONFIG_NAMESPACE    "voxstick"
 #define VOX_CONFIG_KEY          "cfg"
 
 #define HID_KEY_F12             0x45
-#define HID_KEY_BACKSPACE       0x2A
+#define HID_KEY_ARROW_RIGHT     0x4F
 #define HID_MOD_LEFT_CTRL       0x01
 
 #define LONG_PRESS_MIN_MS       250
@@ -37,7 +38,7 @@ static vox_config_wire_t default_config(void)
         .tap_modifier = HID_MOD_LEFT_CTRL,
         .tap_keycode = HID_KEY_F12,
         .hold_modifier = 0,
-        .hold_keycode = HID_KEY_BACKSPACE,
+        .hold_keycode = HID_KEY_ARROW_RIGHT,
         .reserved = 0,
         .long_press_ms = 600,
         .reserved2 = 0,
@@ -115,15 +116,16 @@ static esp_err_t config_load(vox_config_wire_t *out, bool *migrated)
     if (len != sizeof(store) ||
         store.magic != VOX_CONFIG_MAGIC ||
         (store.version != VOX_CONFIG_STORE_VER &&
-         store.version != VOX_CONFIG_STORE_VER_LEGACY) ||
+         store.version != VOX_CONFIG_STORE_VER_V1 &&
+         store.version != VOX_CONFIG_STORE_VER_V2) ||
         store.size != sizeof(store)) {
         return ESP_ERR_INVALID_STATE;
     }
 
     *out = store.data;
-    if (store.version == VOX_CONFIG_STORE_VER_LEGACY) {
+    if (store.version != VOX_CONFIG_STORE_VER) {
         out->hold_modifier = 0;
-        out->hold_keycode = HID_KEY_BACKSPACE;
+        out->hold_keycode = HID_KEY_ARROW_RIGHT;
         *migrated = true;
     }
     if (!config_valid(out)) {
@@ -145,7 +147,7 @@ void vox_config_init(void)
     } else if (migrated) {
         esp_err_t save_ret = config_save(&cfg);
         if (save_ret == ESP_OK) {
-            ESP_LOGI(TAG, "config migrated: long press now sends Backspace");
+            ESP_LOGI(TAG, "config migrated: BtnA long press now sends Right Arrow");
         } else {
             ESP_LOGW(TAG, "config migration save failed: %s",
                      esp_err_to_name(save_ret));
