@@ -154,6 +154,9 @@ static const char *TAG = "voxstick";
 #define VAD_OFF_LEVEL      450U
 #define VAD_FULL_LEVEL     5000U
 #define VAD_FRAME_MS       100
+#define MIC_STATE_POLL_MS        20
+#define MIC_STATE_USB_SETTLE_MS  500
+#define MIC_UNMUTE_HOLD_MS       2000
 
 // ---- Globals -------------------------------------------------------------
 static i2c_master_bus_handle_t  g_i2c_bus     = NULL;
@@ -170,6 +173,7 @@ static volatile uint32_t        g_vad_level = 0;
 static volatile bool            g_vad_active = false;
 static volatile bool            g_vad_display_enabled = false;
 static SemaphoreHandle_t        g_hid_mutex = NULL;
+static TaskHandle_t             g_shake_backspace_task_handle = NULL;
 // IMU orientation-based mute: true when the BMI270 reports the stick is
 // lying flat. ORed into the audio path so flat-on-table = silence,
 // pick-it-up = live mic. Independent of g_uac_muted (host volume mute)
@@ -847,6 +851,7 @@ static esp_err_t codec_init(void)
 #define IMU_SHAKE_MIN_GAP_MS     60
 #define IMU_SHAKE_WINDOW_MS      450
 #define IMU_SHAKE_REARM_MS       300
+#define IMU_SHAKE_BACKSPACE_COUNT 20U
 
 static struct bmi2_dev          g_bmi;
 static i2c_master_dev_handle_t  g_imu_dev = NULL;
@@ -1000,9 +1005,13 @@ static void imu_task(void *arg)
                         if (gap >= pdMS_TO_TICKS(IMU_SHAKE_MIN_GAP_MS) &&
                             gap <= pdMS_TO_TICKS(IMU_SHAKE_WINDOW_MS) &&
                             opposing) {
-                            bool sent = hid_send_tap(0, HID_KEY_BACKSPACE);
-                            ESP_LOGI(TAG, "imu: shake -> Backspace (%s)",
-                                     sent ? "sent" : "USB not ready");
+                            if (g_shake_backspace_task_handle != NULL) {
+                                xTaskNotifyGive(g_shake_backspace_task_handle);
+                                ESP_LOGI(TAG, "imu: shake queued %u x Backspace",
+                                         IMU_SHAKE_BACKSPACE_COUNT);
+                            } else {
+                                ESP_LOGW(TAG, "imu: shake ignored; HID worker unavailable");
+                            }
                             shake_armed = false;
                             rearm_timer_running = false;
                             have_first_peak = false;
@@ -1216,9 +1225,8 @@ bool tud_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage,
 }
 
 // =========================================================================
-// Buttons. BtnA tap and long-press output are configurable through NVS;
-// defaults are Left Ctrl+F12 and Right Arrow. BtnA double-tap sends Enter.
-// BtnB tap/double-tap/long-press sends Down/Up/Left Arrow.
+// BtnA and BtnB single/double/long actions are configurable through NVS.
+// Defaults are Enter/Left Ctrl/Right and Down/Up/Left respectively.
 //
 // USB HID Keyboard/Keypad usage page (0x07):
 //   F13 = 0x68 .. F24 = 0x73   (TinyUSB also exposes HID_KEY_F13..F24)
@@ -1372,6 +1380,99 @@ static bool hid_send_tap(uint8_t modifier, uint8_t keycode)
     return down_sent && up_sent;
 }
 
+static bool hid_send_action(const char *gesture, vox_hid_action_t action)
+{
+    if (action.modifier == 0 && action.keycode == 0) {
+        ESP_LOGI(TAG, "%s -> disabled", gesture);
+        return true;
+    }
+
+    ESP_LOGI(TAG, "%s -> 0x%02x+0x%02x",
+             gesture, action.modifier, action.keycode);
+    return hid_send_tap(action.modifier, action.keycode);
+}
+
+static void shake_backspace_task(void *arg)
+{
+    (void)arg;
+
+    while (1) {
+        uint32_t batches = ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+        while (batches-- > 0) {
+            uint32_t sent = 0;
+            while (sent < IMU_SHAKE_BACKSPACE_COUNT && tud_mounted()) {
+                if (!hid_send_tap(0, HID_KEY_BACKSPACE)) {
+                    break;
+                }
+                sent++;
+            }
+            ESP_LOGI(TAG, "shake Backspace batch: %lu/%u sent",
+                     (unsigned long)sent, IMU_SHAKE_BACKSPACE_COUNT);
+        }
+    }
+}
+
+static void mic_unmute_hid_task(void *arg)
+{
+    (void)arg;
+
+    bool was_mounted = false;
+    bool tracking = false;
+    bool previous_muted = false;
+    bool left_ctrl_pending = false;
+    TickType_t mounted_at = 0;
+    TickType_t unmuted_at = 0;
+
+    while (1) {
+        bool mounted = tud_mounted();
+        TickType_t now = xTaskGetTickCount();
+
+        if (!mounted) {
+            was_mounted = false;
+            tracking = false;
+            left_ctrl_pending = false;
+        } else {
+            if (!was_mounted) {
+                was_mounted = true;
+                tracking = false;
+                left_ctrl_pending = false;
+                mounted_at = now;
+            }
+
+            if (!tracking) {
+                if (now - mounted_at >=
+                    pdMS_TO_TICKS(MIC_STATE_USB_SETTLE_MS)) {
+                    previous_muted = effective_mic_muted();
+                    tracking = true;
+                    ESP_LOGI(TAG, "mic state baseline: %s",
+                             previous_muted ? "muted" : "live");
+                }
+            } else {
+                bool muted = effective_mic_muted();
+                if (previous_muted && !muted) {
+                    left_ctrl_pending = true;
+                    unmuted_at = now;
+                    ESP_LOGI(TAG, "mic unmuted; waiting %u ms for Left Ctrl",
+                             MIC_UNMUTE_HOLD_MS);
+                } else if (muted) {
+                    left_ctrl_pending = false;
+                }
+                previous_muted = muted;
+
+                if (left_ctrl_pending && !muted &&
+                    now - unmuted_at >= pdMS_TO_TICKS(MIC_UNMUTE_HOLD_MS) &&
+                    hid_send_tap(KEYBOARD_MODIFIER_LEFTCTRL, 0)) {
+                    left_ctrl_pending = false;
+                    ESP_LOGI(TAG, "mic live for %u ms -> Left Ctrl sent",
+                             MIC_UNMUTE_HOLD_MS);
+                }
+            }
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(MIC_STATE_POLL_MS));
+    }
+}
+
 static void button_task(void *arg)
 {
     bool a_committed = true;     // released = high
@@ -1379,7 +1480,7 @@ static void button_task(void *arg)
     int  a_stable    = 0;
     TickType_t a_press_start = 0;
     vox_config_wire_t a_press_cfg = {0};
-    vox_config_wire_t a_first_click_cfg = {0};
+    vox_config_wire_t a_click_cfg = {0};
     bool       a_long_latched = false;  // true once the press has crossed
                                         // the long threshold this hold
     bool a_click_pending = false;
@@ -1389,7 +1490,8 @@ static void button_task(void *arg)
     bool b_pending   = true;
     int  b_stable    = 0;
     TickType_t b_press_start = 0;
-    uint16_t b_long_press_ms = 0;
+    vox_config_wire_t b_press_cfg = {0};
+    vox_config_wire_t b_click_cfg = {0};
     bool b_long_latched = false;
     bool b_click_pending = false;
     bool b_second_press = false;
@@ -1407,23 +1509,21 @@ static void button_task(void *arg)
                 // Just pressed.
                 TickType_t now = xTaskGetTickCount();
                 a_press_start = now;
-                vox_config_get(&a_press_cfg);
                 a_long_latched = false;
                 if (a_click_pending &&
                     now - a_first_release <=
                         pdMS_TO_TICKS(BTN_DOUBLE_CLICK_MS)) {
+                    a_press_cfg = a_click_cfg;
                     a_second_press = true;
                     ESP_LOGI(TAG, "btn A second down");
                 } else {
                     if (a_click_pending) {
-                        ESP_LOGI(TAG, "btn A single -> 0x%02x+0x%02x",
-                                 a_first_click_cfg.tap_modifier,
-                                 a_first_click_cfg.tap_keycode);
-                        hid_send_tap(a_first_click_cfg.tap_modifier,
-                                     a_first_click_cfg.tap_keycode);
+                        hid_send_action("btn A single",
+                                        a_click_cfg.btn_a_single);
                     }
                     a_click_pending = false;
                     a_second_press = false;
+                    vox_config_get(&a_press_cfg);
                     ESP_LOGI(TAG, "btn A down");
                 }
                 if (!g_vad_display_enabled) lcd_status(COL_MAGENTA);
@@ -1433,20 +1533,16 @@ static void button_task(void *arg)
                 bool is_long = a_long_latched ||
                     pdTICKS_TO_MS(held) >= a_press_cfg.long_press_ms;
                 if (is_long) {
-                    ESP_LOGI(TAG, "btn A long -> 0x%02x+0x%02x",
-                             a_press_cfg.hold_modifier,
-                             a_press_cfg.hold_keycode);
-                    hid_send_tap(a_press_cfg.hold_modifier,
-                                 a_press_cfg.hold_keycode);
+                    hid_send_action("btn A long", a_press_cfg.btn_a_long);
                     a_click_pending = false;
                     a_second_press = false;
                 } else if (a_second_press) {
-                    ESP_LOGI(TAG, "btn A double -> Enter");
-                    hid_send_tap(0, HID_KEY_ENTER);
+                    hid_send_action("btn A double",
+                                    a_click_cfg.btn_a_double);
                     a_click_pending = false;
                     a_second_press = false;
                 } else {
-                    a_first_click_cfg = a_press_cfg;
+                    a_click_cfg = a_press_cfg;
                     a_click_pending = true;
                     a_first_release = xTaskGetTickCount();
                     ESP_LOGI(TAG, "btn A first click; waiting for double");
@@ -1473,11 +1569,7 @@ static void button_task(void *arg)
         if (a_click_pending && !a_second_press && a_committed &&
             xTaskGetTickCount() - a_first_release >=
                 pdMS_TO_TICKS(BTN_DOUBLE_CLICK_MS)) {
-            ESP_LOGI(TAG, "btn A single -> 0x%02x+0x%02x",
-                     a_first_click_cfg.tap_modifier,
-                     a_first_click_cfg.tap_keycode);
-            hid_send_tap(a_first_click_cfg.tap_modifier,
-                         a_first_click_cfg.tap_keycode);
+            hid_send_action("btn A single", a_click_cfg.btn_a_single);
             a_click_pending = false;
         }
 
@@ -1487,40 +1579,39 @@ static void button_task(void *arg)
             b_committed = b_pending;
             if (!b_committed) {
                 TickType_t now = xTaskGetTickCount();
-                vox_config_wire_t cfg = {0};
-                vox_config_get(&cfg);
                 b_press_start = now;
-                b_long_press_ms = cfg.long_press_ms;
                 b_long_latched = false;
                 if (b_click_pending &&
                     now - b_first_release <=
                         pdMS_TO_TICKS(BTN_DOUBLE_CLICK_MS)) {
+                    b_press_cfg = b_click_cfg;
                     b_second_press = true;
                     ESP_LOGI(TAG, "btn B second down");
                 } else {
                     if (b_click_pending) {
-                        ESP_LOGI(TAG, "btn B single -> Arrow Down");
-                        hid_send_tap(0, HID_KEY_ARROW_DOWN);
+                        hid_send_action("btn B single",
+                                        b_click_cfg.btn_b_single);
                     }
                     b_click_pending = false;
                     b_second_press = false;
+                    vox_config_get(&b_press_cfg);
                     ESP_LOGI(TAG, "btn B down");
                 }
             } else {
                 TickType_t held = xTaskGetTickCount() - b_press_start;
                 bool is_long = b_long_latched ||
-                    pdTICKS_TO_MS(held) >= b_long_press_ms;
+                    pdTICKS_TO_MS(held) >= b_press_cfg.long_press_ms;
                 if (is_long) {
-                    ESP_LOGI(TAG, "btn B long -> Arrow Left");
-                    hid_send_tap(0, HID_KEY_ARROW_LEFT);
+                    hid_send_action("btn B long", b_press_cfg.btn_b_long);
                     b_click_pending = false;
                     b_second_press = false;
                 } else if (b_second_press) {
-                    ESP_LOGI(TAG, "btn B double -> Arrow Up");
-                    hid_send_tap(0, HID_KEY_ARROW_UP);
+                    hid_send_action("btn B double",
+                                    b_click_cfg.btn_b_double);
                     b_click_pending = false;
                     b_second_press = false;
                 } else {
+                    b_click_cfg = b_press_cfg;
                     b_click_pending = true;
                     b_first_release = xTaskGetTickCount();
                     ESP_LOGI(TAG, "btn B first click; waiting for double");
@@ -1530,7 +1621,7 @@ static void button_task(void *arg)
 
         if (!b_committed && !b_long_latched) {
             TickType_t held = xTaskGetTickCount() - b_press_start;
-            if (pdTICKS_TO_MS(held) >= b_long_press_ms) {
+            if (pdTICKS_TO_MS(held) >= b_press_cfg.long_press_ms) {
                 b_long_latched = true;
                 b_click_pending = false;
                 b_second_press = false;
@@ -1540,8 +1631,7 @@ static void button_task(void *arg)
         if (b_click_pending && !b_second_press && b_committed &&
             xTaskGetTickCount() - b_first_release >=
                 pdMS_TO_TICKS(BTN_DOUBLE_CLICK_MS)) {
-            ESP_LOGI(TAG, "btn B single -> Arrow Down");
-            hid_send_tap(0, HID_KEY_ARROW_DOWN);
+            hid_send_action("btn B single", b_click_cfg.btn_b_single);
             b_click_pending = false;
         }
 
@@ -1626,6 +1716,21 @@ void app_main(void)
     xTaskCreate(button_task, "btn", 2048, NULL, 5, NULL);
     ESP_LOGI(TAG, "buttons up (BtnA=GPIO%d BtnB=GPIO%d)",
              BTN_A_GPIO, BTN_B_GPIO);
+
+#if !VOX_DEBUG_NO_UAC
+    BaseType_t shake_task_ok = xTaskCreate(
+        shake_backspace_task, "shake_hid", 3072, NULL, 4,
+        &g_shake_backspace_task_handle);
+    if (shake_task_ok != pdPASS) {
+        g_shake_backspace_task_handle = NULL;
+        ESP_LOGE(TAG, "shake Backspace HID worker creation failed");
+    }
+
+    if (xTaskCreate(mic_unmute_hid_task, "mic_unmute", 3072,
+                    NULL, 4, NULL) != pdPASS) {
+        ESP_LOGE(TAG, "mic unmute HID worker creation failed");
+    }
+#endif
 
     // BMI270 IMU for orientation-based mic auto-mute. Best-effort: if init
     // fails (chip absent / I2C glitch / blob load failure) we just skip the

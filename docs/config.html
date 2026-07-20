@@ -204,6 +204,18 @@
         border-top: 0;
       }
 
+      .action-editor {
+        display: grid;
+        gap: 10px;
+        padding: 14px 0;
+        border-top: 1px solid var(--line);
+      }
+
+      .action-editor:first-child {
+        padding-top: 4px;
+        border-top: 0;
+      }
+
       label,
       .sub-label {
         color: var(--text);
@@ -400,50 +412,13 @@
               </div>
 
               <div class="setting">
-                <label for="tapPreset">轻按触发键</label>
-                <select id="tapPreset">
-                  <option value="leftCtrlF12">微信输入法：左 Ctrl + F12</option>
-                  <option value="rightCtrlF12">右 Ctrl + F12</option>
-                  <option value="f19">F19</option>
-                  <option value="f20">F20</option>
-                  <option value="custom">自定义</option>
-                </select>
-                <div id="tapCustom" class="custom-grid hidden">
-                  <div>
-                    <div class="sub-label">修饰键</div>
-                    <div id="tapModifiers" class="mod-grid"></div>
-                  </div>
-                  <div>
-                    <label for="tapKey">按键</label>
-                    <select id="tapKey"></select>
-                  </div>
-                </div>
+                <div class="sub-label">BtnA 映射</div>
+                <div id="btnAActions"></div>
               </div>
 
               <div class="setting">
-                <label for="holdPreset">BtnA 长按触发键</label>
-                <select id="holdPreset">
-                  <option value="rightArrow">向右方向键</option>
-                  <option value="leftArrow">向左方向键</option>
-                  <option value="backspace">Backspace</option>
-                  <option value="enter">Enter</option>
-                  <option value="none">不发送按键</option>
-                  <option value="f20">F20</option>
-                  <option value="custom">自定义</option>
-                </select>
-                <div id="holdCustom" class="custom-grid hidden">
-                  <div>
-                    <div class="sub-label">修饰键</div>
-                    <div id="holdModifiers" class="mod-grid"></div>
-                  </div>
-                  <div>
-                    <label for="holdKey">按键</label>
-                    <select id="holdKey"></select>
-                  </div>
-                </div>
-                <p class="fine-print">
-                  双击 BtnA 固定发送 Enter；长按 BtnB 固定发送向左方向键。
-                </p>
+                <div class="sub-label">BtnB 映射</div>
+                <div id="btnBActions"></div>
               </div>
 
               <div class="setting">
@@ -456,6 +431,10 @@
                   step="50"
                   inputmode="numeric"
                 />
+                <p class="fine-print">
+                  BtnA 和 BtnB 共用此阈值；双击窗口固定为 350 ms。开机按住
+                  BtnA 的 ROM 恢复手势不可配置。
+                </p>
               </div>
 
               <div class="setting">
@@ -485,17 +464,23 @@
             <dd id="summaryConnection">未连接</dd>
             <dt>平放闭麦</dt>
             <dd id="summaryFlat">-</dd>
-            <dt>轻按</dt>
-            <dd id="summaryTap">-</dd>
-            <dt>双击</dt>
-            <dd>Enter（固定）</dd>
-            <dt>长按</dt>
-            <dd id="summaryHold">-</dd>
-            <dt>阈值</dt>
+            <dt>BtnA 单击</dt>
+            <dd id="summaryASingle">-</dd>
+            <dt>BtnA 双击</dt>
+            <dd id="summaryADouble">-</dd>
+            <dt>BtnA 长按</dt>
+            <dd id="summaryALong">-</dd>
+            <dt>BtnB 单击</dt>
+            <dd id="summaryBSingle">-</dd>
+            <dt>BtnB 双击</dt>
+            <dd id="summaryBDouble">-</dd>
+            <dt>BtnB 长按</dt>
+            <dd id="summaryBLong">-</dd>
+            <dt>长按阈值</dt>
             <dd id="summaryPress">-</dd>
           </dl>
           <p class="fine-print">
-            配置保存在设备 NVS 中。需要固件 <code>v0.1.6</code> 或更新版本。
+            配置保存在设备 NVS 中。六动作配置需要协议 v2 固件。
           </p>
         </aside>
       </section>
@@ -506,22 +491,54 @@
 
       const VOX_VID = 0x303a;
       const VOX_PID = 0x8001;
-      const PROTOCOL_VERSION = 1;
+      const PROTOCOL_VERSION = 2;
       const CMD_GET = 1;
       const CMD_SET = 2;
       const CMD_RESET = 3;
       const STATUS_OK = 0;
-      const CONFIG_SIZE = 12;
+      const CONFIG_SIZE = 20;
       const TRANSFER_TIMEOUT_MS = 1500;
 
       const DEFAULT_CONFIG = {
         flatMute: true,
-        tapModifier: 0x01,
-        tapKeycode: 0x45,
-        holdModifier: 0,
-        holdKeycode: 0x4f,
+        aSingleModifier: 0,
+        aSingleKeycode: 0x28,
+        aDoubleModifier: 0x01,
+        aDoubleKeycode: 0,
+        aLongModifier: 0,
+        aLongKeycode: 0x4f,
+        bSingleModifier: 0,
+        bSingleKeycode: 0x51,
+        bDoubleModifier: 0,
+        bDoubleKeycode: 0x52,
+        bLongModifier: 0,
+        bLongKeycode: 0x50,
         longPressMs: 600,
       };
+
+      const ACTION_DEFS = [
+        { kind: "aSingle", label: "单击", summary: "summaryASingle", group: "A" },
+        { kind: "aDouble", label: "双击", summary: "summaryADouble", group: "A" },
+        { kind: "aLong", label: "长按", summary: "summaryALong", group: "A" },
+        { kind: "bSingle", label: "单击", summary: "summaryBSingle", group: "B" },
+        { kind: "bDouble", label: "双击", summary: "summaryBDouble", group: "B" },
+        { kind: "bLong", label: "长按", summary: "summaryBLong", group: "B" },
+      ];
+
+      const PRESET_OPTIONS = [
+        { value: "enter", label: "Enter" },
+        { value: "leftCtrl", label: "左 Ctrl" },
+        { value: "rightArrow", label: "向右方向键" },
+        { value: "leftArrow", label: "向左方向键" },
+        { value: "downArrow", label: "向下方向键" },
+        { value: "upArrow", label: "向上方向键" },
+        { value: "backspace", label: "Backspace" },
+        { value: "leftCtrlF12", label: "左 Ctrl + F12" },
+        { value: "f19", label: "F19" },
+        { value: "f20", label: "F20" },
+        { value: "none", label: "不发送按键" },
+        { value: "custom", label: "自定义" },
+      ];
 
       const MODIFIERS = [
         { bit: 0x01, label: "左 Ctrl" },
@@ -559,18 +576,16 @@
         { code: 0x29, label: "Esc" },
       ];
 
-      const TAP_PRESETS = {
-        leftCtrlF12: { modifier: 0x01, keycode: 0x45 },
-        rightCtrlF12: { modifier: 0x10, keycode: 0x45 },
-        f19: { modifier: 0, keycode: 0x6e },
-        f20: { modifier: 0, keycode: 0x6f },
-      };
-
-      const HOLD_PRESETS = {
+      const ACTION_PRESETS = {
+        enter: { modifier: 0, keycode: 0x28 },
+        leftCtrl: { modifier: 0x01, keycode: 0 },
         rightArrow: { modifier: 0, keycode: 0x4f },
         leftArrow: { modifier: 0, keycode: 0x50 },
+        downArrow: { modifier: 0, keycode: 0x51 },
+        upArrow: { modifier: 0, keycode: 0x52 },
         backspace: { modifier: 0, keycode: 0x2a },
-        enter: { modifier: 0, keycode: 0x28 },
+        leftCtrlF12: { modifier: 0x01, keycode: 0x45 },
+        f19: { modifier: 0, keycode: 0x6e },
         none: { modifier: 0, keycode: 0 },
         f20: { modifier: 0, keycode: 0x6f },
       };
@@ -670,7 +685,7 @@
 
       function actionName(modifier, keycode) {
         if (keycode === 0) {
-          return "不发送按键";
+          return modifierName(modifier) || "不发送按键";
         }
         const mods = modifierName(modifier);
         const key = keyName(keycode);
@@ -716,9 +731,41 @@
         return "custom";
       }
 
+      function renderActionEditors() {
+        for (const group of ["A", "B"]) {
+          const container = $(`btn${group}Actions`);
+          container.innerHTML = ACTION_DEFS.filter(
+            (action) => action.group === group,
+          )
+            .map(
+              ({ kind, label }) => `
+                <div class="action-editor">
+                  <label for="${kind}Preset">${label}</label>
+                  <select id="${kind}Preset">
+                    ${PRESET_OPTIONS.map(
+                      (option) =>
+                        `<option value="${option.value}">${option.label}</option>`,
+                    ).join("")}
+                  </select>
+                  <div id="${kind}Custom" class="custom-grid hidden">
+                    <div>
+                      <div class="sub-label">修饰键</div>
+                      <div id="${kind}Modifiers" class="mod-grid"></div>
+                    </div>
+                    <div>
+                      <label for="${kind}Key">按键</label>
+                      <select id="${kind}Key"></select>
+                    </div>
+                  </div>
+                </div>
+              `,
+            )
+            .join("");
+        }
+      }
+
       function writeActionUi(kind, modifier, keycode) {
-        const map = kind === "tap" ? TAP_PRESETS : HOLD_PRESETS;
-        const preset = findPreset(map, modifier, keycode);
+        const preset = findPreset(ACTION_PRESETS, modifier, keycode);
         $(`${kind}Preset`).value = preset;
         setModifierUi(kind, modifier);
         ensureKeyOption(`${kind}Key`, keycode);
@@ -727,8 +774,7 @@
       }
 
       function applyPreset(kind) {
-        const map = kind === "tap" ? TAP_PRESETS : HOLD_PRESETS;
-        const preset = map[$(`${kind}Preset`).value];
+        const preset = ACTION_PRESETS[$(`${kind}Preset`).value];
         if (preset) {
           setModifierUi(kind, preset.modifier);
           ensureKeyOption(`${kind}Key`, preset.keycode);
@@ -753,30 +799,32 @@
 
       function writeConfigUi(config) {
         $("flatMute").checked = config.flatMute;
-        writeActionUi("tap", config.tapModifier, config.tapKeycode);
-        writeActionUi("hold", config.holdModifier, config.holdKeycode);
+        for (const { kind } of ACTION_DEFS) {
+          writeActionUi(
+            kind,
+            config[`${kind}Modifier`],
+            config[`${kind}Keycode`],
+          );
+        }
         $("longPressMs").value = String(config.longPressMs);
         updateSummary(config);
       }
 
       function readConfigUi() {
-        const tap = readActionUi("tap");
-        const hold = readActionUi("hold");
         const longPressMs = Number($("longPressMs").value);
-        if (!tap.keycode) {
-          throw new Error("轻按触发键不能为空。");
-        }
         if (longPressMs < 250 || longPressMs > 2000) {
           throw new Error("长按阈值必须在 250 到 2000 ms 之间。");
         }
-        return {
+        const config = {
           flatMute: $("flatMute").checked,
-          tapModifier: tap.modifier,
-          tapKeycode: tap.keycode,
-          holdModifier: hold.modifier,
-          holdKeycode: hold.keycode,
           longPressMs,
         };
+        for (const { kind } of ACTION_DEFS) {
+          const action = readActionUi(kind);
+          config[`${kind}Modifier`] = action.modifier;
+          config[`${kind}Keycode`] = action.keycode;
+        }
+        return config;
       }
 
       function readConfigUiSafe() {
@@ -790,20 +838,19 @@
       function updateSummary(config = readConfigUiSafe()) {
         if (!config) {
           $("summaryFlat").textContent = "-";
-          $("summaryTap").textContent = "-";
-          $("summaryHold").textContent = "-";
+          for (const { summary } of ACTION_DEFS) {
+            $(summary).textContent = "-";
+          }
           $("summaryPress").textContent = "-";
           return;
         }
         $("summaryFlat").textContent = config.flatMute ? "开启" : "关闭";
-        $("summaryTap").textContent = actionName(
-          config.tapModifier,
-          config.tapKeycode,
-        );
-        $("summaryHold").textContent = actionName(
-          config.holdModifier,
-          config.holdKeycode,
-        );
+        for (const { kind, summary } of ACTION_DEFS) {
+          $(summary).textContent = actionName(
+            config[`${kind}Modifier`],
+            config[`${kind}Keycode`],
+          );
+        }
         $("summaryPress").textContent = `${config.longPressMs} ms`;
       }
 
@@ -889,7 +936,7 @@
         }
         const response = await withTimeout(
           state.device.transferIn(state.inEndpoint, 64),
-          "读取配置超时，请先刷入 v0.1.6 或更新版本固件。",
+          "读取配置超时，请先刷入支持六动作配置的协议 v2 固件。",
         );
         return parseResponse(response);
       }
@@ -898,12 +945,14 @@
         const payload = new Uint8Array(CONFIG_SIZE);
         const view = new DataView(payload.buffer);
         payload[0] = config.flatMute ? 1 : 0;
-        payload[1] = config.tapModifier;
-        payload[2] = config.tapKeycode;
-        payload[3] = config.holdModifier;
-        payload[4] = config.holdKeycode;
-        view.setUint16(6, config.longPressMs, true);
-        view.setUint32(8, 0, true);
+        payload[1] = 0;
+        const offsets = [2, 4, 6, 8, 10, 12];
+        ACTION_DEFS.forEach(({ kind }, index) => {
+          payload[offsets[index]] = config[`${kind}Modifier`];
+          payload[offsets[index] + 1] = config[`${kind}Keycode`];
+        });
+        view.setUint16(14, config.longPressMs, true);
+        view.setUint32(16, 0, true);
         return payload;
       }
 
@@ -918,11 +967,19 @@
         );
         return {
           flatMute: payload[0] !== 0,
-          tapModifier: payload[1],
-          tapKeycode: payload[2],
-          holdModifier: payload[3],
-          holdKeycode: payload[4],
-          longPressMs: view.getUint16(6, true),
+          aSingleModifier: payload[2],
+          aSingleKeycode: payload[3],
+          aDoubleModifier: payload[4],
+          aDoubleKeycode: payload[5],
+          aLongModifier: payload[6],
+          aLongKeycode: payload[7],
+          bSingleModifier: payload[8],
+          bSingleKeycode: payload[9],
+          bDoubleModifier: payload[10],
+          bDoubleKeycode: payload[11],
+          bLongModifier: payload[12],
+          bLongKeycode: payload[13],
+          longPressMs: view.getUint16(14, true),
         };
       }
 
@@ -986,11 +1043,13 @@
       }
 
       function handleUiChange(event) {
-        if (event && event.target.id === "tapPreset") {
-          applyPreset("tap");
-        }
-        if (event && event.target.id === "holdPreset") {
-          applyPreset("hold");
+        if (event) {
+          const action = ACTION_DEFS.find(
+            ({ kind }) => event.target.id === `${kind}Preset`,
+          );
+          if (action) {
+            applyPreset(action.kind);
+          }
         }
         updateSummary();
         if (state.connected) {
@@ -999,10 +1058,11 @@
       }
 
       function init() {
-        populateModifiers("tapModifiers");
-        populateModifiers("holdModifiers");
-        populateKeys("tapKey", false);
-        populateKeys("holdKey", true);
+        renderActionEditors();
+        for (const { kind } of ACTION_DEFS) {
+          populateModifiers(`${kind}Modifiers`);
+          populateKeys(`${kind}Key`, true);
+        }
         writeConfigUi(DEFAULT_CONFIG);
         setConnected(false);
 

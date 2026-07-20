@@ -6,10 +6,10 @@ USB push-to-talk dictation stick for macOS / Windows, built on the
 M5Stack StickS3 (ESP32-S3).
 
 The stick is a single composite USB device that hosts see as **both** a
-16 kHz microphone *and* a HID keyboard. Tap the front button to toggle
-voice input, double-tap for Enter, or hold to move right. Lay it flat with
+16 kHz microphone *and* a HID keyboard. By default, tap the front button for
+Enter, double-tap for Left Ctrl, or hold to move right. Lay it flat with
 the screen facing up and the IMU mutes the mic automatically. Flat auto-mute
-and button shortcut keys are configurable from the browser. No drivers,
+and all six BtnA/BtnB gesture actions are configurable from the browser. No drivers,
 no companion app, plug-and-play on macOS / Windows / Linux.
 
 ## What it looks like
@@ -61,11 +61,11 @@ The easiest path is the browser installer:
    to fully power off the StickS3, then plug USB back in.
 6. **Computer OS:** after the firmware boots, select `StickS3-Mic` in system
    sound input settings.
-7. **Dictation app:** bind the voice-input shortcut by tapping the StickS3
-   front button. VoxStick sends `Left Ctrl + F12`; most apps show this simply
-   as `Ctrl+F12`, and macOS may show it as `⌃F12`.
+7. **Keyboard check:** tap BtnA to send `Enter`, or double-tap it to send one
+   `Left Ctrl` press and release with the default configuration.
 8. **Optional config:** open <https://openbrt.github.io/voxstick/config.html>
-   to change flat auto-mute, the tap shortcut, and the long-press shortcut.
+   to change all six BtnA/BtnB actions, flat auto-mute, and the shared
+   long-press threshold.
 
 The installer is powered by
 [ESP Web Tools](https://esphome.github.io/esp-web-tools/) and writes the
@@ -108,19 +108,24 @@ For chip recovery (no buttons), see [`tools/trigger-download.sh`](tools/trigger-
 
 ## Button gestures
 
-| Gesture | HID output | Use |
+| Gesture | Default HID output | Use |
 |---|---|---|
-| Tap BtnA | `Left Ctrl + F12` | Toggle WeType voice input, or any tool bound to Ctrl+F12 |
-| Double-tap BtnA | `Enter` | Send the dictated message |
+| Tap BtnA | `Enter` | Confirm or send in the focused app |
+| Double-tap BtnA | `Left Ctrl` | Send one Left Ctrl press and release |
 | Hold BtnA (≥ 600 ms) | `Right Arrow` | Move the cursor or current selection right once |
 | Tap BtnB | `Down Arrow` | Move the cursor or current selection down once |
 | Double-tap BtnB | `Up Arrow` | Move the cursor or current selection up once |
 | Hold BtnB (≥ 600 ms) | `Left Arrow` | Move the cursor or current selection left once |
-| Shake the stick | `Backspace` | Delete the previous character or selection |
+| Shake the stick | `Backspace` × 20 | Delete up to 20 preceding characters or selections |
+| Microphone muted → live for 2 seconds | `Left Ctrl` | Send once only if it stays live continuously |
 | Hold BtnA at boot | (none) | Reboot to ROM download mode for safe re-flash |
 
 Use the [WebUSB config page](https://openbrt.github.io/voxstick/config.html)
-to change the BtnA tap and hold actions without rebuilding firmware.
+to change all six runtime button actions and the shared long-press threshold
+without rebuilding firmware. The 350 ms double-click window and boot-time BtnA
+ROM recovery gesture remain fixed.
+Boot and USB reconnect establish the microphone-state baseline and do not send
+Left Ctrl. Muting again within the two-second window cancels the pending key.
 
 ## License
 

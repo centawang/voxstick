@@ -50,12 +50,27 @@ static void write_u16_le(uint8_t *p, uint16_t value)
     p[1] = (uint8_t)(value >> 8);
 }
 
-static void write_config_response(uint8_t itf, uint8_t status,
+static vox_config_v1_wire_t config_v1_from_current(vox_config_wire_t const *cfg)
+{
+    return (vox_config_v1_wire_t) {
+        .flat_mute_enabled = cfg->flat_mute_enabled,
+        .tap_modifier = cfg->btn_a_single.modifier,
+        .tap_keycode = cfg->btn_a_single.keycode,
+        .hold_modifier = cfg->btn_a_long.modifier,
+        .hold_keycode = cfg->btn_a_long.keycode,
+        .reserved = 0,
+        .long_press_ms = cfg->long_press_ms,
+        .reserved2 = 0,
+    };
+}
+
+static void write_config_response(uint8_t itf, uint8_t protocol_version,
+                                  uint8_t status,
                                   vox_config_wire_t const *cfg)
 {
     uint8_t resp[CFG_HEADER_LEN + sizeof(vox_config_wire_t)] = {
         'V', 'X', 'C', 'R',
-        VOX_CONFIG_PROTOCOL_VERSION,
+        protocol_version,
         status,
         0,
         0,
@@ -63,8 +78,14 @@ static void write_config_response(uint8_t itf, uint8_t status,
     uint16_t payload_len = 0;
 
     if (status == VOX_CONFIG_STATUS_OK && cfg != NULL) {
-        payload_len = sizeof(*cfg);
-        memcpy(resp + CFG_HEADER_LEN, cfg, payload_len);
+        if (protocol_version == VOX_CONFIG_PROTOCOL_VERSION_LEGACY) {
+            vox_config_v1_wire_t legacy = config_v1_from_current(cfg);
+            payload_len = sizeof(legacy);
+            memcpy(resp + CFG_HEADER_LEN, &legacy, payload_len);
+        } else {
+            payload_len = sizeof(*cfg);
+            memcpy(resp + CFG_HEADER_LEN, cfg, payload_len);
+        }
     }
     write_u16_le(resp + 6, payload_len);
 
@@ -90,17 +111,19 @@ static bool handle_config_packet(uint8_t itf,
     }
 
     if (bufsize < CFG_HEADER_LEN) {
-        write_config_response(itf, VOX_CONFIG_STATUS_BAD_REQ, NULL);
+        write_config_response(itf, VOX_CONFIG_PROTOCOL_VERSION,
+                              VOX_CONFIG_STATUS_BAD_REQ, NULL);
         return true;
     }
 
     uint8_t version = buffer[4];
     uint8_t command = buffer[5];
     uint16_t payload_len = read_u16_le(buffer + 6);
-    if (version != VOX_CONFIG_PROTOCOL_VERSION ||
+    if ((version != VOX_CONFIG_PROTOCOL_VERSION &&
+         version != VOX_CONFIG_PROTOCOL_VERSION_LEGACY) ||
         payload_len > bufsize - CFG_HEADER_LEN ||
         CFG_HEADER_LEN + payload_len != bufsize) {
-        write_config_response(itf, VOX_CONFIG_STATUS_BAD_REQ, NULL);
+        write_config_response(itf, version, VOX_CONFIG_STATUS_BAD_REQ, NULL);
         return true;
     }
 
@@ -109,44 +132,66 @@ static bool handle_config_packet(uint8_t itf,
     switch (command) {
     case VOX_CONFIG_CMD_GET:
         if (payload_len != 0) {
-            write_config_response(itf, VOX_CONFIG_STATUS_BAD_REQ, NULL);
+            write_config_response(itf, version,
+                                  VOX_CONFIG_STATUS_BAD_REQ, NULL);
             return true;
         }
         vox_config_get(&cfg);
-        write_config_response(itf, VOX_CONFIG_STATUS_OK, &cfg);
+        write_config_response(itf, version, VOX_CONFIG_STATUS_OK, &cfg);
         return true;
 
     case VOX_CONFIG_CMD_SET:
-        if (payload_len != sizeof(cfg)) {
-            write_config_response(itf, VOX_CONFIG_STATUS_BAD_REQ, NULL);
-            return true;
+        if (version == VOX_CONFIG_PROTOCOL_VERSION_LEGACY) {
+            if (payload_len != sizeof(vox_config_v1_wire_t)) {
+                write_config_response(itf, version,
+                                      VOX_CONFIG_STATUS_BAD_REQ, NULL);
+                return true;
+            }
+            vox_config_v1_wire_t legacy = {0};
+            memcpy(&legacy, buffer + CFG_HEADER_LEN, sizeof(legacy));
+            vox_config_get(&cfg);
+            cfg.flat_mute_enabled = legacy.flat_mute_enabled;
+            cfg.btn_a_single.modifier = legacy.tap_modifier;
+            cfg.btn_a_single.keycode = legacy.tap_keycode;
+            cfg.btn_a_long.modifier = legacy.hold_modifier;
+            cfg.btn_a_long.keycode = legacy.hold_keycode;
+            cfg.long_press_ms = legacy.long_press_ms;
+        } else {
+            if (payload_len != sizeof(cfg)) {
+                write_config_response(itf, version,
+                                      VOX_CONFIG_STATUS_BAD_REQ, NULL);
+                return true;
+            }
+            memcpy(&cfg, buffer + CFG_HEADER_LEN, sizeof(cfg));
         }
-        memcpy(&cfg, buffer + CFG_HEADER_LEN, sizeof(cfg));
         ret = vox_config_set(&cfg);
         if (ret != ESP_OK) {
-            write_config_response(itf, config_status_from_error(ret), NULL);
+            write_config_response(itf, version,
+                                  config_status_from_error(ret), NULL);
             return true;
         }
         vox_config_get(&cfg);
-        write_config_response(itf, VOX_CONFIG_STATUS_OK, &cfg);
+        write_config_response(itf, version, VOX_CONFIG_STATUS_OK, &cfg);
         return true;
 
     case VOX_CONFIG_CMD_RESET:
         if (payload_len != 0) {
-            write_config_response(itf, VOX_CONFIG_STATUS_BAD_REQ, NULL);
+            write_config_response(itf, version,
+                                  VOX_CONFIG_STATUS_BAD_REQ, NULL);
             return true;
         }
         ret = vox_config_reset();
         if (ret != ESP_OK) {
-            write_config_response(itf, config_status_from_error(ret), NULL);
+            write_config_response(itf, version,
+                                  config_status_from_error(ret), NULL);
             return true;
         }
         vox_config_get(&cfg);
-        write_config_response(itf, VOX_CONFIG_STATUS_OK, &cfg);
+        write_config_response(itf, version, VOX_CONFIG_STATUS_OK, &cfg);
         return true;
 
     default:
-        write_config_response(itf, VOX_CONFIG_STATUS_BAD_REQ, NULL);
+        write_config_response(itf, version, VOX_CONFIG_STATUS_BAD_REQ, NULL);
         return true;
     }
 }

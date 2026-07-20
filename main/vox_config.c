@@ -7,15 +7,18 @@
 #include "nvs.h"
 
 #define VOX_CONFIG_MAGIC        0x31474656u  // "VFG1", little-endian
-#define VOX_CONFIG_STORE_VER    3
-#define VOX_CONFIG_STORE_VER_V1 1
-#define VOX_CONFIG_STORE_VER_V2 2
+#define VOX_CONFIG_STORE_VER    5
+#define VOX_CONFIG_STORE_VER_MIN_LEGACY 1
+#define VOX_CONFIG_STORE_VER_MAX_LEGACY 4
 #define VOX_CONFIG_NAMESPACE    "voxstick"
 #define VOX_CONFIG_KEY          "cfg"
 
-#define HID_KEY_F12             0x45
-#define HID_KEY_ARROW_RIGHT     0x4F
 #define HID_MOD_LEFT_CTRL       0x01
+#define HID_KEY_ENTER           0x28
+#define HID_KEY_ARROW_RIGHT     0x4F
+#define HID_KEY_ARROW_LEFT      0x50
+#define HID_KEY_ARROW_DOWN      0x51
+#define HID_KEY_ARROW_UP        0x52
 
 #define LONG_PRESS_MIN_MS       250
 #define LONG_PRESS_MAX_MS       2000
@@ -27,6 +30,18 @@ typedef struct __attribute__((packed)) {
     vox_config_wire_t data;
 } vox_config_store_t;
 
+typedef struct __attribute__((packed)) {
+    uint32_t magic;
+    uint16_t version;
+    uint16_t size;
+    vox_config_v1_wire_t data;
+} vox_config_legacy_store_t;
+
+_Static_assert(sizeof(vox_config_legacy_store_t) == 20,
+               "legacy config store size changed");
+_Static_assert(sizeof(vox_config_store_t) == 28,
+               "current config store size changed");
+
 static const char *TAG = "voxstick";
 static portMUX_TYPE s_config_lock = portMUX_INITIALIZER_UNLOCKED;
 static vox_config_wire_t s_config;
@@ -35,26 +50,25 @@ static vox_config_wire_t default_config(void)
 {
     return (vox_config_wire_t) {
         .flat_mute_enabled = 1,
-        .tap_modifier = HID_MOD_LEFT_CTRL,
-        .tap_keycode = HID_KEY_F12,
-        .hold_modifier = 0,
-        .hold_keycode = HID_KEY_ARROW_RIGHT,
         .reserved = 0,
+        .btn_a_single = { .modifier = 0, .keycode = HID_KEY_ENTER },
+        .btn_a_double = { .modifier = HID_MOD_LEFT_CTRL, .keycode = 0 },
+        .btn_a_long = { .modifier = 0, .keycode = HID_KEY_ARROW_RIGHT },
+        .btn_b_single = { .modifier = 0, .keycode = HID_KEY_ARROW_DOWN },
+        .btn_b_double = { .modifier = 0, .keycode = HID_KEY_ARROW_UP },
+        .btn_b_long = { .modifier = 0, .keycode = HID_KEY_ARROW_LEFT },
         .long_press_ms = 600,
         .reserved2 = 0,
     };
 }
 
-static bool keycode_valid(uint8_t keycode, bool allow_none)
+static bool action_valid(vox_hid_action_t action)
 {
-    if (keycode == 0) {
-        return allow_none;
+    if (action.keycode == 0) {
+        return true;
     }
 
-    // Printable keys, arrows, and F1..F24 all live in this range in the
-    // USB HID Keyboard/Keypad usage page. We keep validation broad so the
-    // config page can grow without needing firmware changes.
-    return keycode >= 0x04 && keycode <= 0x73;
+    return action.keycode >= 0x04 && action.keycode <= 0x73;
 }
 
 static bool config_valid(vox_config_wire_t const *cfg)
@@ -62,10 +76,12 @@ static bool config_valid(vox_config_wire_t const *cfg)
     if (cfg == NULL) {
         return false;
     }
-    if (!keycode_valid(cfg->tap_keycode, false)) {
-        return false;
-    }
-    if (!keycode_valid(cfg->hold_keycode, true)) {
+    if (!action_valid(cfg->btn_a_single) ||
+        !action_valid(cfg->btn_a_double) ||
+        !action_valid(cfg->btn_a_long) ||
+        !action_valid(cfg->btn_b_single) ||
+        !action_valid(cfg->btn_b_double) ||
+        !action_valid(cfg->btn_b_long)) {
         return false;
     }
     if (cfg->long_press_ms < LONG_PRESS_MIN_MS ||
@@ -106,32 +122,72 @@ static esp_err_t config_load(vox_config_wire_t *out, bool *migrated)
         return ret;
     }
 
-    vox_config_store_t store = {0};
-    size_t len = sizeof(store);
-    ret = nvs_get_blob(nvs, VOX_CONFIG_KEY, &store, &len);
-    nvs_close(nvs);
+    size_t len = 0;
+    ret = nvs_get_blob(nvs, VOX_CONFIG_KEY, NULL, &len);
     if (ret != ESP_OK) {
+        nvs_close(nvs);
         return ret;
     }
-    if (len != sizeof(store) ||
-        store.magic != VOX_CONFIG_MAGIC ||
-        (store.version != VOX_CONFIG_STORE_VER &&
-         store.version != VOX_CONFIG_STORE_VER_V1 &&
-         store.version != VOX_CONFIG_STORE_VER_V2) ||
-        store.size != sizeof(store)) {
-        return ESP_ERR_INVALID_STATE;
+
+    if (len == sizeof(vox_config_store_t)) {
+        vox_config_store_t store = {0};
+        size_t read_len = sizeof(store);
+        ret = nvs_get_blob(nvs, VOX_CONFIG_KEY, &store, &read_len);
+        nvs_close(nvs);
+        if (ret != ESP_OK) {
+            return ret;
+        }
+        if (read_len != sizeof(store) ||
+            store.magic != VOX_CONFIG_MAGIC ||
+            store.version != VOX_CONFIG_STORE_VER ||
+            store.size != sizeof(store) ||
+            !config_valid(&store.data)) {
+            return ESP_ERR_INVALID_STATE;
+        }
+        *out = store.data;
+        return ESP_OK;
     }
 
-    *out = store.data;
-    if (store.version != VOX_CONFIG_STORE_VER) {
-        out->hold_modifier = 0;
-        out->hold_keycode = HID_KEY_ARROW_RIGHT;
+    if (len == sizeof(vox_config_legacy_store_t)) {
+        vox_config_legacy_store_t legacy = {0};
+        size_t read_len = sizeof(legacy);
+        ret = nvs_get_blob(nvs, VOX_CONFIG_KEY, &legacy, &read_len);
+        nvs_close(nvs);
+        if (ret != ESP_OK) {
+            return ret;
+        }
+        if (read_len != sizeof(legacy) ||
+            legacy.magic != VOX_CONFIG_MAGIC ||
+            legacy.version < VOX_CONFIG_STORE_VER_MIN_LEGACY ||
+            legacy.version > VOX_CONFIG_STORE_VER_MAX_LEGACY ||
+            legacy.size != sizeof(legacy)) {
+            return ESP_ERR_INVALID_STATE;
+        }
+
+        vox_config_wire_t migrated_cfg = default_config();
+        migrated_cfg.flat_mute_enabled = legacy.data.flat_mute_enabled;
+        migrated_cfg.btn_a_single.modifier = legacy.data.tap_modifier;
+        migrated_cfg.btn_a_single.keycode = legacy.data.tap_keycode;
+        migrated_cfg.btn_a_long.modifier = legacy.data.hold_modifier;
+        migrated_cfg.btn_a_long.keycode = legacy.data.hold_keycode;
+        migrated_cfg.long_press_ms = legacy.data.long_press_ms;
+        if (!config_valid(&migrated_cfg)) {
+            return ESP_ERR_INVALID_STATE;
+        }
+
+        *out = migrated_cfg;
         *migrated = true;
+        return ESP_OK;
     }
-    if (!config_valid(out)) {
-        return ESP_ERR_INVALID_STATE;
-    }
-    return ESP_OK;
+
+    nvs_close(nvs);
+    return ESP_ERR_INVALID_STATE;
+}
+
+static void log_action(const char *name, vox_hid_action_t action)
+{
+    ESP_LOGI(TAG, "config: %-12s = 0x%02x+0x%02x",
+             name, action.modifier, action.keycode);
 }
 
 void vox_config_init(void)
@@ -147,7 +203,8 @@ void vox_config_init(void)
     } else if (migrated) {
         esp_err_t save_ret = config_save(&cfg);
         if (save_ret == ESP_OK) {
-            ESP_LOGI(TAG, "config migrated: BtnA long press now sends Right Arrow");
+            ESP_LOGI(TAG, "config migrated to six-action store v%u",
+                     VOX_CONFIG_STORE_VER);
         } else {
             ESP_LOGW(TAG, "config migration save failed: %s",
                      esp_err_to_name(save_ret));
@@ -158,13 +215,14 @@ void vox_config_init(void)
     s_config = cfg;
     portEXIT_CRITICAL(&s_config_lock);
 
-    ESP_LOGI(TAG, "config: flat_mute=%u tap=0x%02x+0x%02x hold=0x%02x+0x%02x long=%u ms",
-             cfg.flat_mute_enabled,
-             cfg.tap_modifier,
-             cfg.tap_keycode,
-             cfg.hold_modifier,
-             cfg.hold_keycode,
-             cfg.long_press_ms);
+    ESP_LOGI(TAG, "config: flat_mute=%u long=%u ms",
+             cfg.flat_mute_enabled, cfg.long_press_ms);
+    log_action("BtnA single", cfg.btn_a_single);
+    log_action("BtnA double", cfg.btn_a_double);
+    log_action("BtnA long", cfg.btn_a_long);
+    log_action("BtnB single", cfg.btn_b_single);
+    log_action("BtnB double", cfg.btn_b_double);
+    log_action("BtnB long", cfg.btn_b_long);
 }
 
 void vox_config_get(vox_config_wire_t *out)
@@ -188,7 +246,7 @@ bool vox_config_flat_mute_enabled(void)
 
 esp_err_t vox_config_set(vox_config_wire_t const *cfg)
 {
-    if (!config_valid(cfg)) {
+    if (cfg == NULL) {
         return ESP_ERR_INVALID_ARG;
     }
 
@@ -196,6 +254,9 @@ esp_err_t vox_config_set(vox_config_wire_t const *cfg)
     normalized.flat_mute_enabled = normalized.flat_mute_enabled ? 1 : 0;
     normalized.reserved = 0;
     normalized.reserved2 = 0;
+    if (!config_valid(&normalized)) {
+        return ESP_ERR_INVALID_ARG;
+    }
 
     esp_err_t ret = config_save(&normalized);
     if (ret != ESP_OK) {
@@ -206,13 +267,14 @@ esp_err_t vox_config_set(vox_config_wire_t const *cfg)
     s_config = normalized;
     portEXIT_CRITICAL(&s_config_lock);
 
-    ESP_LOGI(TAG, "config saved: flat_mute=%u tap=0x%02x+0x%02x hold=0x%02x+0x%02x long=%u ms",
-             normalized.flat_mute_enabled,
-             normalized.tap_modifier,
-             normalized.tap_keycode,
-             normalized.hold_modifier,
-             normalized.hold_keycode,
-             normalized.long_press_ms);
+    ESP_LOGI(TAG, "config saved: flat_mute=%u long=%u ms",
+             normalized.flat_mute_enabled, normalized.long_press_ms);
+    log_action("BtnA single", normalized.btn_a_single);
+    log_action("BtnA double", normalized.btn_a_double);
+    log_action("BtnA long", normalized.btn_a_long);
+    log_action("BtnB single", normalized.btn_b_single);
+    log_action("BtnB double", normalized.btn_b_double);
+    log_action("BtnB long", normalized.btn_b_long);
     return ESP_OK;
 }
 

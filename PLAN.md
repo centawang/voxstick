@@ -35,9 +35,14 @@ in whatever app is focused.
 
 - USB descriptor → composite UAC + HID Consumer Control (reference
   [Alexaznavour/micemul](https://github.com/Alexaznavour/micemul))
-- BtnA tap → configurable PTT shortcut; double-tap → `Enter`; long-press →
-  `Right Arrow`
-- BtnB tap → `Down Arrow`; double-tap → `Up Arrow`; long-press → `Left Arrow`
+- BtnA tap/double/long defaults → `Enter` / `Left Ctrl` / `Right Arrow`
+- BtnB tap/double/long defaults → `Down Arrow` / `Up Arrow` / `Left Arrow`
+- All six runtime button actions are configurable over WebUSB; the 350 ms
+  double-click window stays fixed and both buttons share the long-press threshold
+- Shake → 20 complete `Backspace` taps, dispatched outside the IMU task
+- Effective microphone state `muted → live` for two continuous seconds → one
+  `Left Ctrl` tap; muting again cancels the timer, while boot and USB reconnect
+  establish a baseline without sending a key
 - LCD: minimum viable indicator — red dot in top-right while button is held
 - Mac side: install [VoiceInk](https://github.com/Beingpax/VoiceInk),
   - input device = `StickS3-Mic`
