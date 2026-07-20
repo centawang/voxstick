@@ -181,7 +181,6 @@ static volatile bool            g_vad_active = false;
 static volatile bool            g_vad_display_enabled = false;
 static SemaphoreHandle_t        g_hid_mutex = NULL;
 static QueueHandle_t            g_hid_action_queue = NULL;
-static TaskHandle_t             g_shake_backspace_task_handle = NULL;
 // IMU orientation-based mute: true when the BMI270 reports the stick is
 // lying flat. ORed into the audio path so flat-on-table = silence,
 // pick-it-up = live mic. Independent of g_uac_muted (host volume mute)
@@ -189,6 +188,7 @@ static TaskHandle_t             g_shake_backspace_task_handle = NULL;
 static volatile bool            g_imu_mute  = false;
 
 static bool hid_send_tap(uint8_t modifier, uint8_t keycode);
+static bool hid_queue_action(const char *gesture, vox_hid_action_t action);
 
 static bool effective_mic_muted(void)
 {
@@ -859,7 +859,6 @@ static esp_err_t codec_init(void)
 #define IMU_SHAKE_MIN_GAP_MS     60
 #define IMU_SHAKE_WINDOW_MS      450
 #define IMU_SHAKE_REARM_MS       300
-#define IMU_SHAKE_BACKSPACE_COUNT 20U
 
 static struct bmi2_dev          g_bmi;
 static i2c_master_dev_handle_t  g_imu_dev = NULL;
@@ -1013,13 +1012,9 @@ static void imu_task(void *arg)
                         if (gap >= pdMS_TO_TICKS(IMU_SHAKE_MIN_GAP_MS) &&
                             gap <= pdMS_TO_TICKS(IMU_SHAKE_WINDOW_MS) &&
                             opposing) {
-                            if (g_shake_backspace_task_handle != NULL) {
-                                xTaskNotifyGive(g_shake_backspace_task_handle);
-                                ESP_LOGI(TAG, "imu: shake queued %u x Backspace",
-                                         IMU_SHAKE_BACKSPACE_COUNT);
-                            } else {
-                                ESP_LOGW(TAG, "imu: shake ignored; HID worker unavailable");
-                            }
+                            vox_config_wire_t cfg = {0};
+                            vox_config_get(&cfg);
+                            hid_queue_action("shake", cfg.shake);
                             shake_armed = false;
                             rearm_timer_running = false;
                             have_first_peak = false;
@@ -1401,8 +1396,18 @@ static bool hid_send_action(const char *gesture, vox_hid_action_t action)
         return hid_send_tap(action.modifier, action.keycode);
     }
 
+    return hid_queue_action(gesture, action);
+}
+
+static bool hid_queue_action(const char *gesture, vox_hid_action_t action)
+{
+    if (action.modifier == 0 && action.keycode == 0) {
+        ESP_LOGI(TAG, "%s -> disabled", gesture);
+        return true;
+    }
+
     if (g_hid_action_queue == NULL) {
-        ESP_LOGW(TAG, "%s repeat ignored; HID action worker unavailable",
+        ESP_LOGW(TAG, "%s ignored; HID action worker unavailable",
                  gesture);
         return false;
     }
@@ -1436,26 +1441,6 @@ static void hid_action_worker_task(void *arg)
         }
         ESP_LOGI(TAG, "%s repeat batch: %u/%u sent",
                  job.gesture, sent, job.action.repeat_count);
-    }
-}
-
-static void shake_backspace_task(void *arg)
-{
-    (void)arg;
-
-    while (1) {
-        uint32_t batches = ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-        while (batches-- > 0) {
-            uint32_t sent = 0;
-            while (sent < IMU_SHAKE_BACKSPACE_COUNT && tud_mounted()) {
-                if (!hid_send_tap(0, HID_KEY_BACKSPACE)) {
-                    break;
-                }
-                sent++;
-            }
-            ESP_LOGI(TAG, "shake Backspace batch: %lu/%u sent",
-                     (unsigned long)sent, IMU_SHAKE_BACKSPACE_COUNT);
-        }
     }
 }
 
@@ -1780,14 +1765,6 @@ void app_main(void)
              BTN_A_GPIO, BTN_B_GPIO);
 
 #if !VOX_DEBUG_NO_UAC
-    BaseType_t shake_task_ok = xTaskCreate(
-        shake_backspace_task, "shake_hid", 3072, NULL, 4,
-        &g_shake_backspace_task_handle);
-    if (shake_task_ok != pdPASS) {
-        g_shake_backspace_task_handle = NULL;
-        ESP_LOGE(TAG, "shake Backspace HID worker creation failed");
-    }
-
     if (xTaskCreate(mic_unmute_hid_task, "mic_unmute", 3072,
                     NULL, 4, NULL) != pdPASS) {
         ESP_LOGE(TAG, "mic unmute HID worker creation failed");

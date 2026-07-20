@@ -429,6 +429,11 @@
               </div>
 
               <div class="setting">
+                <div class="sub-label">摇晃映射</div>
+                <div id="shakeActions"></div>
+              </div>
+
+              <div class="setting">
                 <label for="longPressMs">长按阈值</label>
                 <input
                   id="longPressMs"
@@ -483,11 +488,13 @@
             <dd id="summaryBDouble">-</dd>
             <dt>BtnB 长按</dt>
             <dd id="summaryBLong">-</dd>
+            <dt>有效摇晃一次</dt>
+            <dd id="summaryShake">-</dd>
             <dt>长按阈值</dt>
             <dd id="summaryPress">-</dd>
           </dl>
           <p class="fine-print">
-            配置保存在设备 NVS 中。重复动作配置需要协议 v3 固件。
+            配置保存在设备 NVS 中。摇晃映射需要协议 v4 固件。
           </p>
         </aside>
       </section>
@@ -498,12 +505,12 @@
 
       const VOX_VID = 0x303a;
       const VOX_PID = 0x8001;
-      const PROTOCOL_VERSION = 3;
+      const PROTOCOL_VERSION = 4;
       const CMD_GET = 1;
       const CMD_SET = 2;
       const CMD_RESET = 3;
       const STATUS_OK = 0;
-      const CONFIG_SIZE = 26;
+      const CONFIG_SIZE = 29;
       const TRANSFER_TIMEOUT_MS = 1500;
 
       const DEFAULT_CONFIG = {
@@ -526,6 +533,9 @@
         bLongModifier: 0,
         bLongKeycode: 0x50,
         bLongRepeat: 1,
+        shakeModifier: 0,
+        shakeKeycode: 0x2a,
+        shakeRepeat: 20,
         longPressMs: 600,
       };
 
@@ -536,6 +546,18 @@
         { kind: "bSingle", label: "单击", summary: "summaryBSingle", group: "B" },
         { kind: "bDouble", label: "双击", summary: "summaryBDouble", group: "B" },
         { kind: "bLong", label: "长按", summary: "summaryBLong", group: "B" },
+        {
+          kind: "shake",
+          label: "有效摇晃一次",
+          summary: "summaryShake",
+          group: "shake",
+        },
+      ];
+
+      const ACTION_GROUPS = [
+        { group: "A", container: "btnAActions" },
+        { group: "B", container: "btnBActions" },
+        { group: "shake", container: "shakeActions" },
       ];
 
       const PRESET_OPTIONS = [
@@ -758,8 +780,8 @@
       }
 
       function renderActionEditors() {
-        for (const group of ["A", "B"]) {
-          const container = $(`btn${group}Actions`);
+        for (const { group, container: containerId } of ACTION_GROUPS) {
+          const container = $(containerId);
           container.innerHTML = ACTION_DEFS.filter(
             (action) => action.group === group,
           )
@@ -994,7 +1016,7 @@
         }
         const response = await withTimeout(
           state.device.transferIn(state.inEndpoint, 64),
-          "读取配置超时，请先刷入支持重复动作配置的协议 v3 固件。",
+          "读取配置超时，请先刷入支持摇晃映射的协议 v4 固件。",
         );
         return parseResponse(response);
       }
@@ -1004,14 +1026,14 @@
         const view = new DataView(payload.buffer);
         payload[0] = config.flatMute ? 1 : 0;
         payload[1] = 0;
-        const offsets = [2, 5, 8, 11, 14, 17];
+        const offsets = [2, 5, 8, 11, 14, 17, 20];
         ACTION_DEFS.forEach(({ kind }, index) => {
           payload[offsets[index]] = config[`${kind}Modifier`];
           payload[offsets[index] + 1] = config[`${kind}Keycode`];
           payload[offsets[index] + 2] = config[`${kind}Repeat`];
         });
-        view.setUint16(20, config.longPressMs, true);
-        view.setUint32(22, 0, true);
+        view.setUint16(23, config.longPressMs, true);
+        view.setUint32(25, 0, true);
         return payload;
       }
 
@@ -1044,7 +1066,10 @@
           bLongModifier: payload[17],
           bLongKeycode: payload[18],
           bLongRepeat: payload[19],
-          longPressMs: view.getUint16(20, true),
+          shakeModifier: payload[20],
+          shakeKeycode: payload[21],
+          shakeRepeat: payload[22],
+          longPressMs: view.getUint16(23, true),
         };
       }
 

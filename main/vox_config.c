@@ -7,10 +7,11 @@
 #include "nvs.h"
 
 #define VOX_CONFIG_MAGIC        0x31474656u  // "VFG1", little-endian
-#define VOX_CONFIG_STORE_VER    6
+#define VOX_CONFIG_STORE_VER    7
 #define VOX_CONFIG_STORE_VER_MIN_LEGACY 1
 #define VOX_CONFIG_STORE_VER_MAX_LEGACY 4
 #define VOX_CONFIG_STORE_VER_V5 5
+#define VOX_CONFIG_STORE_VER_V6 6
 #define VOX_CONFIG_NAMESPACE    "voxstick"
 #define VOX_CONFIG_KEY          "cfg"
 
@@ -48,11 +49,20 @@ typedef struct __attribute__((packed)) {
     vox_config_v2_wire_t data;
 } vox_config_v5_store_t;
 
+typedef struct __attribute__((packed)) {
+    uint32_t magic;
+    uint16_t version;
+    uint16_t size;
+    vox_config_v3_wire_t data;
+} vox_config_v6_store_t;
+
 _Static_assert(sizeof(vox_config_legacy_store_t) == 20,
                "legacy config store size changed");
 _Static_assert(sizeof(vox_config_v5_store_t) == 28,
                "v5 config store size changed");
-_Static_assert(sizeof(vox_config_store_t) == 34,
+_Static_assert(sizeof(vox_config_v6_store_t) == 34,
+               "v6 config store size changed");
+_Static_assert(sizeof(vox_config_store_t) == 37,
                "current config store size changed");
 
 static const char *TAG = "voxstick";
@@ -70,6 +80,7 @@ static vox_config_wire_t default_config(void)
         .btn_b_single = { .modifier = 0, .keycode = HID_KEY_ARROW_DOWN, .repeat_count = 1 },
         .btn_b_double = { .modifier = 0, .keycode = HID_KEY_ARROW_UP, .repeat_count = 1 },
         .btn_b_long = { .modifier = 0, .keycode = HID_KEY_ARROW_LEFT, .repeat_count = 1 },
+        .shake = { .modifier = 0, .keycode = HID_KEY_BACKSPACE, .repeat_count = 20 },
         .long_press_ms = 600,
         .reserved2 = 0,
     };
@@ -102,7 +113,8 @@ static bool config_valid(vox_config_wire_t const *cfg)
         !action_valid(cfg->btn_a_long) ||
         !action_valid(cfg->btn_b_single) ||
         !action_valid(cfg->btn_b_double) ||
-        !action_valid(cfg->btn_b_long)) {
+        !action_valid(cfg->btn_b_long) ||
+        !action_valid(cfg->shake)) {
         return false;
     }
     if (cfg->long_press_ms < LONG_PRESS_MIN_MS ||
@@ -166,6 +178,38 @@ static esp_err_t config_load(vox_config_wire_t *out, bool *migrated)
             return ESP_ERR_INVALID_STATE;
         }
         *out = store.data;
+        return ESP_OK;
+    }
+
+    if (len == sizeof(vox_config_v6_store_t)) {
+        vox_config_v6_store_t store = {0};
+        size_t read_len = sizeof(store);
+        ret = nvs_get_blob(nvs, VOX_CONFIG_KEY, &store, &read_len);
+        nvs_close(nvs);
+        if (ret != ESP_OK) {
+            return ret;
+        }
+        if (read_len != sizeof(store) ||
+            store.magic != VOX_CONFIG_MAGIC ||
+            store.version != VOX_CONFIG_STORE_VER_V6 ||
+            store.size != sizeof(store)) {
+            return ESP_ERR_INVALID_STATE;
+        }
+
+        vox_config_wire_t migrated_cfg = default_config();
+        migrated_cfg.flat_mute_enabled = store.data.flat_mute_enabled;
+        migrated_cfg.btn_a_single = store.data.btn_a_single;
+        migrated_cfg.btn_a_double = store.data.btn_a_double;
+        migrated_cfg.btn_a_long = store.data.btn_a_long;
+        migrated_cfg.btn_b_single = store.data.btn_b_single;
+        migrated_cfg.btn_b_double = store.data.btn_b_double;
+        migrated_cfg.btn_b_long = store.data.btn_b_long;
+        migrated_cfg.long_press_ms = store.data.long_press_ms;
+        if (!config_valid(&migrated_cfg)) {
+            return ESP_ERR_INVALID_STATE;
+        }
+        *out = migrated_cfg;
+        *migrated = true;
         return ESP_OK;
     }
 
@@ -262,7 +306,7 @@ void vox_config_init(void)
     } else if (migrated) {
         esp_err_t save_ret = config_save(&cfg);
         if (save_ret == ESP_OK) {
-            ESP_LOGI(TAG, "config migrated to six-action store v%u",
+            ESP_LOGI(TAG, "config migrated to seven-action store v%u",
                      VOX_CONFIG_STORE_VER);
         } else {
             ESP_LOGW(TAG, "config migration save failed: %s",
@@ -282,6 +326,7 @@ void vox_config_init(void)
     log_action("BtnB single", cfg.btn_b_single);
     log_action("BtnB double", cfg.btn_b_double);
     log_action("BtnB long", cfg.btn_b_long);
+    log_action("Shake", cfg.shake);
 }
 
 void vox_config_get(vox_config_wire_t *out)
@@ -334,6 +379,7 @@ esp_err_t vox_config_set(vox_config_wire_t const *cfg)
     log_action("BtnB single", normalized.btn_b_single);
     log_action("BtnB double", normalized.btn_b_double);
     log_action("BtnB long", normalized.btn_b_long);
+    log_action("Shake", normalized.shake);
     return ESP_OK;
 }
 
