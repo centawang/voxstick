@@ -140,6 +140,9 @@ static const char *TAG = "voxstick";
 #define COL_DOG_BROWN     0x4943
 #define COL_DOG_TONGUE    0xFAD2
 #define COL_DOG_COLLAR    0x2A9F
+#define COL_DOG_LAB       0xDDA5
+#define COL_DOG_BLACK     0x18C3
+#define COL_DOG_GRAY      0x7BEF
 #define COL_HOUSE_FRONT   0xB9C6
 #define COL_HOUSE_ROOF    0xE346
 
@@ -440,7 +443,73 @@ static void lcd_fill_roof(int cx, int top_y, int bottom_y,
     }
 }
 
-static void lcd_draw_doghouse(bool codec_ready)
+static int lcd_interpolate_x(int x0, int y0, int x1, int y1, int y)
+{
+    if (y0 == y1) return x0;
+    return x0 + (x1 - x0) * (y - y0) / (y1 - y0);
+}
+
+static void lcd_fill_triangle(int x0, int y0, int x1, int y1,
+                              int x2, int y2, uint16_t rgb565)
+{
+    if (y0 > y1) {
+        int tx = x0; x0 = x1; x1 = tx;
+        int ty = y0; y0 = y1; y1 = ty;
+    }
+    if (y1 > y2) {
+        int tx = x1; x1 = x2; x2 = tx;
+        int ty = y1; y1 = y2; y2 = ty;
+    }
+    if (y0 > y1) {
+        int tx = x0; x0 = x1; x1 = tx;
+        int ty = y0; y0 = y1; y1 = ty;
+    }
+    if (y0 == y2) return;
+
+    for (int y = y0; y <= y2; y++) {
+        int xa = lcd_interpolate_x(x0, y0, x2, y2, y);
+        int xb = y < y1
+            ? lcd_interpolate_x(x0, y0, x1, y1, y)
+            : lcd_interpolate_x(x1, y1, x2, y2, y);
+        if (xa > xb) {
+            int swap = xa; xa = xb; xb = swap;
+        }
+        lcd_fill_rect(xa, y, xb + 1, y + 1, rgb565);
+    }
+}
+
+static void lcd_draw_dog_peek(uint8_t dog_style)
+{
+    uint16_t fur = COL_DOG_FUR;
+    if (dog_style == VOX_DOG_STYLE_LABRADOR) {
+        fur = COL_DOG_LAB;
+    } else if (dog_style == VOX_DOG_STYLE_COLLIE) {
+        fur = COL_DOG_BLACK;
+    }
+
+    if (dog_style == VOX_DOG_STYLE_CORGI) {
+        lcd_fill_triangle(55, 140, 59, 119, 65, 140, fur);
+        lcd_fill_triangle(70, 140, 78, 119, 81, 140, fur);
+    } else if (dog_style == VOX_DOG_STYLE_SHIBA ||
+               dog_style == VOX_DOG_STYLE_COLLIE) {
+        lcd_fill_triangle(56, 140, 60, 123, 66, 140, fur);
+        lcd_fill_triangle(69, 140, 76, 123, 80, 140, fur);
+    } else {
+        lcd_fill_circle(57, 138, 6, COL_DOG_BROWN);
+        lcd_fill_circle(77, 138, 6, COL_DOG_BROWN);
+    }
+
+    lcd_fill_circle(67, 143, 13, fur);
+    if (dog_style == VOX_DOG_STYLE_COLLIE) {
+        lcd_fill_triangle(67, 130, 62, 149, 67, 155, COL_WHITE);
+        lcd_fill_triangle(67, 130, 67, 155, 72, 149, COL_WHITE);
+    }
+    lcd_fill_circle(62, 142, 2, COL_DOG_BROWN);
+    lcd_fill_circle(72, 142, 2, COL_DOG_BROWN);
+    lcd_fill_circle(67, 150, 3, COL_DOG_BROWN);
+}
+
+static void lcd_draw_doghouse(bool codec_ready, uint8_t dog_style)
 {
     const int cx = LCD_W / 2;
 
@@ -458,6 +527,7 @@ static void lcd_draw_doghouse(bool codec_ready)
     lcd_fill_rect(cx - 19, 126, cx + 20, 164, COL_DOG_BROWN);
     lcd_fill_circle(cx, 129, 14, COL_BLACK);
     lcd_fill_rect(cx - 14, 129, cx + 15, 164, COL_BLACK);
+    lcd_draw_dog_peek(dog_style);
 
     lcd_fill_circle(cx + 25, 122, 5, COL_DOG_MUZZLE);
     lcd_fill_circle(cx + 20, 116, 3, COL_DOG_MUZZLE);
@@ -518,9 +588,213 @@ static void lcd_draw_pixel_dog(uint32_t level, bool active,
     lcd_fill_rect(30, 188, 106, 192, COL_DARK_GRAY);
 }
 
+static void lcd_draw_dog_eyes(int head_y, int spacing, bool blink)
+{
+    if (blink) {
+        lcd_fill_rect(67 - spacing - 5, head_y,
+                      67 - spacing + 5, head_y + 3, COL_DOG_BROWN);
+        lcd_fill_rect(67 + spacing - 5, head_y,
+                      67 + spacing + 5, head_y + 3, COL_DOG_BROWN);
+        return;
+    }
+
+    lcd_fill_circle(67 - spacing, head_y, 4, COL_DOG_BROWN);
+    lcd_fill_circle(67 + spacing, head_y, 4, COL_DOG_BROWN);
+    lcd_fill_circle(68 - spacing, head_y - 1, 1, COL_WHITE);
+    lcd_fill_circle(68 + spacing, head_y - 1, 1, COL_WHITE);
+}
+
+static void lcd_draw_dog_mouth(uint32_t level, bool active,
+                               int mouth_y, int motion)
+{
+    if (active) {
+        int radius = 7 + (int)(level * 5U / VAD_FULL_LEVEL);
+        lcd_fill_circle(67, mouth_y, radius, COL_DOG_BROWN);
+        lcd_fill_circle(67, mouth_y + radius - 1 + motion,
+                        radius > 4 ? radius - 3 : 2, COL_DOG_TONGUE);
+        lcd_fill_rect(67 - radius, mouth_y - radius,
+                      68 + radius, mouth_y, COL_DOG_BROWN);
+        return;
+    }
+
+    lcd_draw_thick_line(67, mouth_y - 3, 67, mouth_y + 4,
+                        3, COL_DOG_BROWN);
+    lcd_draw_thick_line(67, mouth_y + 4, 58, mouth_y + 9,
+                        3, COL_DOG_BROWN);
+    lcd_draw_thick_line(67, mouth_y + 4, 76, mouth_y + 9,
+                        3, COL_DOG_BROWN);
+}
+
+static void lcd_draw_round_dog_body(int bob, uint16_t fur,
+                                    uint16_t chest, bool curled_tail)
+{
+    if (curled_tail) {
+        lcd_fill_circle(104, 146 + bob, 15, fur);
+        lcd_fill_circle(104, 146 + bob, 7, COL_BLACK);
+        lcd_fill_rect(91, 146 + bob, 105, 157 + bob, fur);
+    } else {
+        lcd_draw_thick_line(94, 151 + bob, 112, 142 + bob, 10, fur);
+        lcd_draw_thick_line(112, 142 + bob, 119, 151 + bob, 10, fur);
+    }
+
+    lcd_fill_circle(67, 151 + bob, 34, fur);
+    lcd_fill_triangle(53, 130 + bob, 81, 130 + bob,
+                      67, 177 + bob, chest);
+    lcd_fill_circle(46, 174 + bob, 12, fur);
+    lcd_fill_circle(88, 174 + bob, 12, fur);
+    lcd_fill_rect(31, 181, 104, 184, COL_DARK_GRAY);
+}
+
+static void lcd_finish_round_dog(uint32_t level, bool active,
+                                 uint32_t animation_frame,
+                                 int head_y, int eye_spacing)
+{
+    bool blink = animation_frame % 60U == 0;
+    int motion = active ? (((animation_frame / 5U) & 1U) ? 1 : -1) : 0;
+
+    lcd_draw_dog_eyes(head_y - 7, eye_spacing, blink);
+    lcd_fill_circle(67, head_y + 5, 6, COL_DOG_BROWN);
+    lcd_draw_dog_mouth(level, active, head_y + 23, motion);
+    lcd_fill_rect(38, head_y + 33, 97, head_y + 39, COL_DOG_COLLAR);
+    lcd_fill_circle(67, head_y + 40, 5, COL_YELLOW);
+}
+
+static void lcd_draw_shiba(uint32_t level, bool active,
+                           uint32_t animation_frame)
+{
+    int motion = active ? (((animation_frame / 5U) & 1U) ? 1 : -1) : 0;
+    int bob = active ? motion : 0;
+    int head_y = 98 + bob;
+
+    lcd_draw_round_dog_body(bob, COL_DOG_FUR, COL_DOG_MUZZLE, true);
+    lcd_fill_triangle(31, 79 + bob, 42, 32 + bob,
+                      60, 74 + bob, COL_DOG_FUR);
+    lcd_fill_triangle(75, 74 + bob, 94, 32 + bob,
+                      104, 79 + bob, COL_DOG_FUR);
+    lcd_fill_triangle(39, 67 + bob, 43, 44 + bob,
+                      53, 69 + bob, COL_DOG_TONGUE);
+    lcd_fill_triangle(82, 69 + bob, 93, 44 + bob,
+                      97, 67 + bob, COL_DOG_TONGUE);
+    lcd_fill_circle(67, head_y, 40, COL_DOG_FUR);
+    lcd_fill_triangle(67, 61 + bob, 57, 99 + bob,
+                      67, 112 + bob, COL_DOG_MUZZLE);
+    lcd_fill_triangle(67, 61 + bob, 67, 112 + bob,
+                      77, 99 + bob, COL_DOG_MUZZLE);
+    lcd_fill_circle(49, 110 + bob, 17, COL_DOG_MUZZLE);
+    lcd_fill_circle(85, 110 + bob, 17, COL_DOG_MUZZLE);
+    lcd_finish_round_dog(level, active, animation_frame, head_y, 17);
+}
+
+static void lcd_draw_corgi(uint32_t level, bool active,
+                           uint32_t animation_frame)
+{
+    int motion = active ? (((animation_frame / 5U) & 1U) ? 1 : -1) : 0;
+    int bob = active ? motion : 0;
+    int head_y = 101 + bob;
+
+    lcd_draw_round_dog_body(bob, COL_DOG_FUR, COL_WHITE, false);
+    lcd_fill_triangle(24, 84 + bob, 30, 22 + bob,
+                      61, 75 + bob, COL_DOG_FUR);
+    lcd_fill_triangle(74, 75 + bob, 105, 22 + bob,
+                      111, 84 + bob, COL_DOG_FUR);
+    lcd_fill_triangle(31, 69 + bob, 33, 35 + bob,
+                      52, 72 + bob, COL_DOG_TONGUE);
+    lcd_fill_triangle(83, 72 + bob, 102, 35 + bob,
+                      104, 69 + bob, COL_DOG_TONGUE);
+    lcd_fill_circle(67, head_y, 42, COL_DOG_FUR);
+    lcd_fill_triangle(67, 63 + bob, 54, 92 + bob,
+                      61, 125 + bob, COL_WHITE);
+    lcd_fill_triangle(67, 63 + bob, 61, 125 + bob,
+                      74, 125 + bob, COL_WHITE);
+    lcd_fill_triangle(67, 63 + bob, 74, 125 + bob,
+                      81, 92 + bob, COL_WHITE);
+    lcd_fill_circle(49, 111 + bob, 16, COL_DOG_MUZZLE);
+    lcd_fill_circle(85, 111 + bob, 16, COL_DOG_MUZZLE);
+    lcd_finish_round_dog(level, active, animation_frame, head_y, 18);
+}
+
+static void lcd_draw_labrador(uint32_t level, bool active,
+                              uint32_t animation_frame)
+{
+    int motion = active ? (((animation_frame / 5U) & 1U) ? 2 : -2) : 0;
+    int bob = active ? (motion > 0 ? 1 : -1) : 0;
+    int head_y = 98 + bob;
+
+    lcd_draw_round_dog_body(bob, COL_DOG_LAB, COL_DOG_MUZZLE, false);
+    lcd_draw_thick_line(43, 72 + bob, 28 - motion, 99 + bob,
+                        18, COL_DOG_BROWN);
+    lcd_draw_thick_line(28 - motion, 99 + bob, 35, 124 + bob,
+                        18, COL_DOG_BROWN);
+    lcd_draw_thick_line(91, 72 + bob, 107 + motion, 99 + bob,
+                        18, COL_DOG_BROWN);
+    lcd_draw_thick_line(107 + motion, 99 + bob, 100, 124 + bob,
+                        18, COL_DOG_BROWN);
+    lcd_fill_circle(67, head_y, 41, COL_DOG_LAB);
+    lcd_fill_circle(53, 115 + bob, 19, COL_DOG_MUZZLE);
+    lcd_fill_circle(81, 115 + bob, 19, COL_DOG_MUZZLE);
+    lcd_finish_round_dog(level, active, animation_frame, head_y, 17);
+}
+
+static void lcd_draw_collie(uint32_t level, bool active,
+                            uint32_t animation_frame)
+{
+    int motion = active ? (((animation_frame / 5U) & 1U) ? 1 : -1) : 0;
+    int bob = active ? motion : 0;
+    int head_y = 99 + bob;
+
+    lcd_draw_round_dog_body(bob, COL_DOG_BLACK, COL_WHITE, false);
+    lcd_fill_triangle(27, 80 + bob, 38, 26 + bob,
+                      61, 73 + bob, COL_DOG_BLACK);
+    lcd_fill_triangle(74, 73 + bob, 97, 26 + bob,
+                      108, 80 + bob, COL_DOG_BLACK);
+    lcd_fill_triangle(35, 64 + bob, 40, 39 + bob,
+                      53, 69 + bob, COL_DOG_GRAY);
+    lcd_fill_triangle(82, 69 + bob, 95, 39 + bob,
+                      100, 64 + bob, COL_DOG_GRAY);
+    lcd_fill_circle(67, head_y, 41, COL_WHITE);
+    lcd_fill_triangle(26, 90 + bob, 54, 61 + bob,
+                      57, 122 + bob, COL_DOG_BLACK);
+    lcd_fill_triangle(26, 90 + bob, 57, 122 + bob,
+                      35, 124 + bob, COL_DOG_BLACK);
+    lcd_fill_triangle(109, 90 + bob, 81, 61 + bob,
+                      78, 122 + bob, COL_DOG_BLACK);
+    lcd_fill_triangle(109, 90 + bob, 78, 122 + bob,
+                      100, 124 + bob, COL_DOG_BLACK);
+    lcd_fill_triangle(67, 59 + bob, 56, 102 + bob,
+                      67, 116 + bob, COL_WHITE);
+    lcd_fill_triangle(67, 59 + bob, 67, 116 + bob,
+                      78, 102 + bob, COL_WHITE);
+    lcd_finish_round_dog(level, active, animation_frame, head_y, 17);
+}
+
+static void lcd_draw_selected_dog(uint32_t level, bool active,
+                                  uint32_t animation_frame,
+                                  uint8_t dog_style)
+{
+    switch (dog_style) {
+    case VOX_DOG_STYLE_SHIBA:
+        lcd_draw_shiba(level, active, animation_frame);
+        break;
+    case VOX_DOG_STYLE_CORGI:
+        lcd_draw_corgi(level, active, animation_frame);
+        break;
+    case VOX_DOG_STYLE_LABRADOR:
+        lcd_draw_labrador(level, active, animation_frame);
+        break;
+    case VOX_DOG_STYLE_COLLIE:
+        lcd_draw_collie(level, active, animation_frame);
+        break;
+    case VOX_DOG_STYLE_PIXEL:
+    default:
+        lcd_draw_pixel_dog(level, active, animation_frame);
+        break;
+    }
+}
+
 static void lcd_draw_mic_status(uint32_t level, bool active,
                                 bool codec_ready, bool muted,
-                                uint32_t animation_frame)
+                                uint32_t animation_frame,
+                                uint8_t dog_style)
 {
     if (!g_lcd) return;
 
@@ -530,9 +804,9 @@ static void lcd_draw_mic_status(uint32_t level, bool active,
 
     lcd_runtime_frame_begin(COL_BLACK);
     if (codec_ready && !muted) {
-        lcd_draw_pixel_dog(level, active, animation_frame);
+        lcd_draw_selected_dog(level, active, animation_frame, dog_style);
     } else {
-        lcd_draw_doghouse(codec_ready);
+        lcd_draw_doghouse(codec_ready, dog_style);
     }
     lcd_runtime_frame_commit();
 }
@@ -545,6 +819,7 @@ static void vad_lcd_task(void *arg)
     bool last_active = false;
     bool last_codec_ready = false;
     bool last_muted = false;
+    uint8_t last_dog_style = VOX_DOG_STYLE_PIXEL;
     uint32_t animation_frame = 0;
     bool first_frame = true;
 
@@ -559,6 +834,7 @@ static void vad_lcd_task(void *arg)
         bool active = g_vad_active;
         bool codec_ready = g_codec_ready;
         bool muted = effective_mic_muted();
+        uint8_t dog_style = vox_config_dog_style();
         if (muted || !codec_ready) {
             capped = 0;
             active = false;
@@ -570,12 +846,14 @@ static void vad_lcd_task(void *arg)
                           (blink_phase == 0 || blink_phase == 1);
         if (first_frame || active != last_active ||
             codec_ready != last_codec_ready || muted != last_muted ||
+            dog_style != last_dog_style ||
             speech_animation_tick || blink_tick) {
             lcd_draw_mic_status(capped, active, codec_ready, muted,
-                                animation_frame);
+                                animation_frame, dog_style);
             last_active = active;
             last_codec_ready = codec_ready;
             last_muted = muted;
+            last_dog_style = dog_style;
             first_frame = false;
         }
 
@@ -1942,7 +2220,8 @@ void app_main(void)
     }
 
 #if !VOX_DEBUG_NO_UAC
-    lcd_draw_mic_status(0, false, g_codec_ready, effective_mic_muted(), 0);
+    lcd_draw_mic_status(0, false, g_codec_ready, effective_mic_muted(), 0,
+                        vox_config_dog_style());
     xTaskCreate(vad_lcd_task, "vad_lcd", 3072, NULL, 4, NULL);
 #endif
 

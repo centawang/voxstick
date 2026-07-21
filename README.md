@@ -38,8 +38,8 @@ work — VoiceInk, MacWhisper Pro, or macOS native Dictation.
 
 - **Real keyboard event**, not a global hotkey faked through Accessibility
 - **Dedicated MEMS mic** + ES8311 codec, away from your laptop fan
-- **Low-power status display** — dim backlight + animated pixel dog on the
-   240×135 LCD while live; muted mode shows the doghouse
+- **Low-power status display** — dim backlight + one of five animated dogs on
+   the 240×135 LCD while live; muted mode shows the doghouse
 - **IMU privacy mute** — face-up or face-down on a desk = mic muted
 
 ## Hardware
@@ -72,7 +72,7 @@ The easiest path is the browser installer:
 9. **Optional config:** while USB is connected, open
    <https://openbrt.github.io/voxstick/config.html> to change all seven
    actions, flat auto-mute, its orientation threshold and transition hold
-   time, and the shared long-press threshold.
+   time, the shared long-press threshold, and the LCD dog style.
 
 The installer is powered by
 [ESP Web Tools](https://esphome.github.io/esp-web-tools/) and writes the
@@ -138,10 +138,13 @@ Use the [WebUSB config page](https://openbrt.github.io/voxstick/config.html)
 to change all six runtime button actions, the shake action, and the shared
 long-press threshold without rebuilding firmware. Flat auto-mute and its
 orientation threshold and transition hold time are configurable on the same
-page. The 350 ms double-click window and boot-time recovery gestures remain
-fixed. Saved mappings apply to both USB and BLE, though the page itself
-requires USB. Built-in action presets include `Delete` and `Backspace × N`;
-`N` defaults to 20 and can be set from 2 to 100.
+page. Choose pixel dog (the default), Shiba, Corgi, Labrador, or Border Collie;
+the [dog preview](https://openbrt.github.io/voxstick/dog-preview.html) shows all
+five styles. Existing devices migrate to the pixel dog without changing saved
+actions or orientation settings. The 350 ms double-click window and boot-time
+recovery gestures remain fixed. Saved mappings apply to both USB and BLE,
+though the page itself requires USB. Built-in action presets include `Delete`
+and `Backspace × N`; `N` defaults to 20 and can be set from 2 to 100.
 Boot and USB reconnect establish the microphone-state baseline and do not send
 Left Ctrl. Muting again within the two-second window cancels the pending key.
 
