@@ -106,6 +106,9 @@ static const char *TAG = "voxstick";
 #define LCD_MOSI_PIN      39
 #define LCD_W             135
 #define LCD_H             240
+#define LCD_RUNTIME_Y0    34
+#define LCD_RUNTIME_Y1    184
+#define LCD_RUNTIME_H     (LCD_RUNTIME_Y1 - LCD_RUNTIME_Y0)
 #define LCD_BL_LEDC_MODE      LEDC_LOW_SPEED_MODE
 #define LCD_BL_LEDC_TIMER     LEDC_TIMER_0
 #define LCD_BL_LEDC_CHANNEL   LEDC_CHANNEL_0
@@ -132,6 +135,13 @@ static const char *TAG = "voxstick";
 #define COL_DIM_CYAN      0x0210
 #define COL_DARK_GRAY     0x0841
 #define COL_LIGHT_GRAY    0xBDF7
+#define COL_DOG_FUR       0xF508
+#define COL_DOG_MUZZLE    0xFF14
+#define COL_DOG_BROWN     0x4943
+#define COL_DOG_TONGUE    0xFAD2
+#define COL_DOG_COLLAR    0x2A9F
+#define COL_HOUSE_FRONT   0xB9C6
+#define COL_HOUSE_ROOF    0xE346
 
 // ---- Audio format (must match sdkconfig CONFIG_UAC_*) --------------------
 #define AUDIO_SAMPLE_RATE  16000
@@ -201,9 +211,8 @@ static bool effective_mic_muted(void)
 // =========================================================================
 // LCD — ST7789P3 over SPI3, used as a low-power status indicator.
 //
-// Boot draws a tiny colour badge; runtime draws a small mic icon and audio
-// meter on a black background. This is enough to tell the stick is alive
-// without running the StickS3 LCD at full-brightness flood-fill all day.
+// Boot draws a tiny colour badge. Runtime shows an animated happy dog while
+// the mic is live and a doghouse while muted, both on a black background.
 //
 // Stage palette (also returned by lcd_status() for grep-ability):
 //   white   = boot reached app_main
@@ -217,10 +226,35 @@ static esp_lcd_panel_handle_t g_lcd = NULL;
 // Static line buffer is enough for a single full-width row — colors fit in a
 // uint16_t and we paint by repeating one row 240 times.
 static uint16_t g_lcd_line[LCD_W];
+// Runtime artwork is composed offscreen and submitted in one SPI transfer so
+// the panel never exposes the intermediate black clear and drawing passes.
+static uint16_t g_lcd_runtime_frame[LCD_W * LCD_RUNTIME_H];
+static bool g_lcd_runtime_frame_active = false;
 
 static inline uint16_t lcd_swap_rgb565(uint16_t rgb565)
 {
     return (uint16_t)((rgb565 << 8) | (rgb565 >> 8));
+}
+
+static void lcd_runtime_frame_begin(uint16_t rgb565)
+{
+    if (!g_lcd) return;
+
+    uint16_t px = lcd_swap_rgb565(rgb565);
+    for (size_t i = 0; i < LCD_W * LCD_RUNTIME_H; i++) {
+        g_lcd_runtime_frame[i] = px;
+    }
+    g_lcd_runtime_frame_active = true;
+}
+
+static void lcd_runtime_frame_commit(void)
+{
+    if (!g_lcd || !g_lcd_runtime_frame_active) return;
+
+    g_lcd_runtime_frame_active = false;
+    esp_lcd_panel_draw_bitmap(g_lcd, 0, LCD_RUNTIME_Y0,
+                              LCD_W, LCD_RUNTIME_Y1,
+                              g_lcd_runtime_frame);
 }
 
 static esp_err_t lcd_backlight_init(void)
@@ -325,6 +359,21 @@ static void lcd_fill_rect(int x0, int y0, int x1, int y1, uint16_t rgb565)
     if (x0 >= x1 || y0 >= y1) return;
 
     uint16_t px = lcd_swap_rgb565(rgb565);
+    if (g_lcd_runtime_frame_active) {
+        if (y0 < LCD_RUNTIME_Y0) y0 = LCD_RUNTIME_Y0;
+        if (y1 > LCD_RUNTIME_Y1) y1 = LCD_RUNTIME_Y1;
+        if (y0 >= y1) return;
+
+        for (int y = y0; y < y1; y++) {
+            uint16_t *row = &g_lcd_runtime_frame[
+                (y - LCD_RUNTIME_Y0) * LCD_W];
+            for (int x = x0; x < x1; x++) {
+                row[x] = px;
+            }
+        }
+        return;
+    }
+
     int width = x1 - x0;
     for (int x = 0; x < width; x++) g_lcd_line[x] = px;
     for (int y = y0; y < y1; y++) {
@@ -367,8 +416,121 @@ static void lcd_draw_thick_line(int x0, int y0, int x1, int y1,
     }
 }
 
+static void lcd_fill_circle(int cx, int cy, int radius, uint16_t rgb565)
+{
+    int radius_sq = radius * radius;
+    for (int y = -radius; y <= radius; y++) {
+        int x = radius;
+        while (x > 0 && x * x + y * y > radius_sq) {
+            x--;
+        }
+        lcd_fill_rect(cx - x, cy + y, cx + x + 1, cy + y + 1, rgb565);
+    }
+}
+
+static void lcd_fill_roof(int cx, int top_y, int bottom_y,
+                          int half_width, uint16_t rgb565)
+{
+    int height = bottom_y - top_y;
+    if (height <= 0) return;
+
+    for (int y = top_y; y < bottom_y; y++) {
+        int half = half_width * (y - top_y) / height;
+        lcd_fill_rect(cx - half, y, cx + half + 1, y + 1, rgb565);
+    }
+}
+
+static void lcd_draw_doghouse(bool codec_ready)
+{
+    const int cx = LCD_W / 2;
+
+    lcd_fill_rect(18, 162, LCD_W - 18, 166, COL_DARK_GRAY);
+
+    lcd_fill_rect(cx - 36, 100, cx + 37, 163, COL_HOUSE_FRONT);
+    lcd_fill_rect(cx - 31, 106, cx - 26, 156, COL_ORANGE);
+    lcd_fill_roof(cx, 57, 108, 51, COL_HOUSE_ROOF);
+    lcd_draw_thick_line(cx - 51, 108, cx, 57, 5, COL_DOG_BROWN);
+    lcd_draw_thick_line(cx, 57, cx + 51, 108, 5, COL_DOG_BROWN);
+
+    // Rounded doorway and a small paw badge make the muted state readable
+    // even at the StickS3's low backlight setting.
+    lcd_fill_circle(cx, 126, 19, COL_DOG_BROWN);
+    lcd_fill_rect(cx - 19, 126, cx + 20, 164, COL_DOG_BROWN);
+    lcd_fill_circle(cx, 129, 14, COL_BLACK);
+    lcd_fill_rect(cx - 14, 129, cx + 15, 164, COL_BLACK);
+
+    lcd_fill_circle(cx + 25, 122, 5, COL_DOG_MUZZLE);
+    lcd_fill_circle(cx + 20, 116, 3, COL_DOG_MUZZLE);
+    lcd_fill_circle(cx + 25, 114, 3, COL_DOG_MUZZLE);
+    lcd_fill_circle(cx + 30, 116, 3, COL_DOG_MUZZLE);
+
+    if (!codec_ready) {
+        lcd_draw_thick_line(cx - 39, 151, cx + 39, 70, 5, COL_RED);
+        lcd_draw_thick_line(cx - 39, 70, cx + 39, 151, 5, COL_RED);
+    }
+}
+
+static void lcd_draw_happy_dog(uint32_t level, bool active,
+                               uint32_t animation_frame)
+{
+    const int cx = LCD_W / 2;
+    int motion = active
+        ? (((animation_frame / 5U) & 1U) ? 1 : -1)
+        : 0;
+    int bob = active ? motion : 0;
+    int head_y = 104 + bob;
+    bool blink = animation_frame % 60U == 0;
+
+    // Floppy ears move in opposite directions; speech adds a small head bob.
+    lcd_draw_thick_line(cx - 25, head_y - 23,
+                        cx - 39 - motion, head_y + 9, 15, COL_DOG_BROWN);
+    lcd_draw_thick_line(cx + 25, head_y - 23,
+                        cx + 39 + motion, head_y + 9, 15, COL_DOG_BROWN);
+    lcd_fill_circle(cx, head_y, 39, COL_DOG_FUR);
+    lcd_fill_circle(cx - 22, head_y - 27, 13, COL_DOG_FUR);
+    lcd_fill_circle(cx + 22, head_y - 27, 13, COL_DOG_FUR);
+
+    if (blink) {
+        lcd_fill_rect(cx - 22, head_y - 8, cx - 13, head_y - 5,
+                      COL_DOG_BROWN);
+        lcd_fill_rect(cx + 13, head_y - 8, cx + 22, head_y - 5,
+                      COL_DOG_BROWN);
+    } else {
+        lcd_fill_circle(cx - 17, head_y - 7, 4, COL_DOG_BROWN);
+        lcd_fill_circle(cx + 17, head_y - 7, 4, COL_DOG_BROWN);
+        lcd_fill_circle(cx - 16, head_y - 8, 1, COL_WHITE);
+        lcd_fill_circle(cx + 18, head_y - 8, 1, COL_WHITE);
+    }
+
+    lcd_fill_circle(cx - 10, head_y + 10, 13, COL_DOG_MUZZLE);
+    lcd_fill_circle(cx + 10, head_y + 10, 13, COL_DOG_MUZZLE);
+    lcd_fill_circle(cx, head_y + 5, 6, COL_DOG_BROWN);
+
+    if (active) {
+        int mouth_radius = 7 + (int)(level * 5U / VAD_FULL_LEVEL);
+        lcd_fill_circle(cx, head_y + 23, mouth_radius, COL_DOG_BROWN);
+        lcd_fill_circle(cx, head_y + 27 + motion, mouth_radius - 3,
+                        COL_DOG_TONGUE);
+        lcd_fill_rect(cx - mouth_radius, head_y + 17,
+                      cx + mouth_radius + 1, head_y + 23, COL_DOG_BROWN);
+    } else {
+        lcd_draw_thick_line(cx, head_y + 13, cx, head_y + 20,
+                            3, COL_DOG_BROWN);
+        lcd_draw_thick_line(cx, head_y + 20, cx - 10, head_y + 25,
+                            3, COL_DOG_BROWN);
+        lcd_draw_thick_line(cx, head_y + 20, cx + 10, head_y + 25,
+                            3, COL_DOG_BROWN);
+    }
+
+    lcd_fill_rect(cx - 29, head_y + 33, cx + 30, head_y + 39,
+                  COL_DOG_COLLAR);
+    int tag_radius = 4 + (int)(level * 3U / VAD_FULL_LEVEL);
+    lcd_fill_circle(cx, head_y + 40, tag_radius, COL_YELLOW);
+}
+
 static void lcd_draw_mic_status(uint32_t level, bool active,
-                                bool codec_ready, bool muted)
+                                bool codec_ready, bool muted,
+                                uint32_t animation_frame)
 {
     if (!g_lcd) return;
 
@@ -376,49 +538,13 @@ static void lcd_draw_mic_status(uint32_t level, bool active,
         level = VAD_FULL_LEVEL;
     }
 
-    const int cx = LCD_W / 2;
-    uint16_t mic = codec_ready
-        ? (muted ? COL_LIGHT_GRAY : (active ? COL_WHITE : COL_CYAN))
-        : COL_RED;
-    uint16_t accent = codec_ready
-        ? (muted ? COL_DARK_GRAY : (active ? COL_GREEN : COL_DIM_CYAN))
-        : COL_RED;
-
-    lcd_fill_rect(0, 34, LCD_W, 184, COL_BLACK);
-
-    // Mic capsule outline.
-    lcd_fill_rect(cx - 10, 58, cx + 11, 62, mic);
-    lcd_fill_rect(cx - 15, 62, cx + 16, 66, mic);
-    lcd_fill_rect(cx - 18, 66, cx - 14, 112, mic);
-    lcd_fill_rect(cx + 14, 66, cx + 18, 112, mic);
-    lcd_fill_rect(cx - 15, 112, cx + 16, 116, mic);
-    lcd_fill_rect(cx - 10, 116, cx + 11, 120, mic);
-
-    if (active && codec_ready && !muted) {
-        lcd_fill_rect(cx - 10, 72, cx + 11, 106, COL_DIM_CYAN);
+    lcd_runtime_frame_begin(COL_BLACK);
+    if (codec_ready && !muted) {
+        lcd_draw_happy_dog(level, active, animation_frame);
+    } else {
+        lcd_draw_doghouse(codec_ready);
     }
-
-    // Pickup frame and stand.
-    lcd_fill_rect(cx - 30, 92, cx - 26, 114, mic);
-    lcd_fill_rect(cx + 26, 92, cx + 30, 114, mic);
-    lcd_fill_rect(cx - 26, 120, cx + 27, 124, mic);
-    lcd_fill_rect(cx - 2, 124, cx + 3, 148, mic);
-    lcd_fill_rect(cx - 20, 148, cx + 21, 152, mic);
-
-    // Tiny level meter: enough movement to show life, not a bright animation.
-    lcd_fill_rect(cx - 30, 166, cx + 31, 170, COL_DARK_GRAY);
-    if (codec_ready && !muted && level > 0) {
-        int meter_w = (int)(level * 61U / VAD_FULL_LEVEL);
-        if (meter_w < 2) meter_w = 2;
-        lcd_fill_rect(cx - 30, 166, cx - 30 + meter_w, 170, accent);
-    }
-
-    if (muted) {
-        lcd_draw_thick_line(cx - 28, 150, cx + 28, 62, 4, COL_RED);
-    } else if (!codec_ready) {
-        lcd_draw_thick_line(cx - 28, 154, cx + 28, 58, 5, COL_RED);
-        lcd_draw_thick_line(cx - 28, 58, cx + 28, 154, 5, COL_RED);
-    }
+    lcd_runtime_frame_commit();
 }
 
 static void vad_lcd_task(void *arg)
@@ -429,7 +555,8 @@ static void vad_lcd_task(void *arg)
     bool last_active = false;
     bool last_codec_ready = false;
     bool last_muted = false;
-    uint32_t last_bucket = UINT32_MAX;
+    uint32_t animation_frame = 0;
+    bool first_frame = true;
 
     while (1) {
         if (!g_vad_display_enabled) {
@@ -446,17 +573,23 @@ static void vad_lcd_task(void *arg)
             capped = 0;
             active = false;
         }
-        uint32_t bucket = capped / 240U;
-
-        if (active != last_active || codec_ready != last_codec_ready ||
-            muted != last_muted || bucket != last_bucket) {
-            lcd_draw_mic_status(capped, active, codec_ready, muted);
+        uint32_t blink_phase = animation_frame % 60U;
+        bool speech_animation_tick = codec_ready && !muted && active &&
+                                     animation_frame % 5U == 0;
+        bool blink_tick = codec_ready && !muted && !active &&
+                          (blink_phase == 0 || blink_phase == 1);
+        if (first_frame || active != last_active ||
+            codec_ready != last_codec_ready || muted != last_muted ||
+            speech_animation_tick || blink_tick) {
+            lcd_draw_mic_status(capped, active, codec_ready, muted,
+                                animation_frame);
             last_active = active;
             last_codec_ready = codec_ready;
             last_muted = muted;
-            last_bucket = bucket;
+            first_frame = false;
         }
 
+        animation_frame++;
         vTaskDelay(pdMS_TO_TICKS(VAD_FRAME_MS));
     }
 }
@@ -1819,7 +1952,7 @@ void app_main(void)
     }
 
 #if !VOX_DEBUG_NO_UAC
-    lcd_draw_mic_status(0, false, g_codec_ready, effective_mic_muted());
+    lcd_draw_mic_status(0, false, g_codec_ready, effective_mic_muted(), 0);
     xTaskCreate(vad_lcd_task, "vad_lcd", 3072, NULL, 4, NULL);
 #endif
 
