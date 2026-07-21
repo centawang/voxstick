@@ -205,9 +205,9 @@ static bool                     g_clear_ble_bonds_on_boot = false;
 static bool                     g_ignore_buttons_until_release = false;
 static QueueHandle_t            g_hid_action_queue = NULL;
 // IMU orientation-based mute: true when the BMI270 reports the stick is
-// lying flat. ORed into the audio path so flat-on-table = silence,
-// pick-it-up = live mic. Independent of g_uac_muted (host volume mute)
-// and g_codec_ready (codec init failure).
+// resting face-up/down or on either long side. ORed into the audio path so
+// resting-on-table = silence, portrait = live mic. Independent of
+// g_uac_muted (host volume mute) and g_codec_ready (codec init failure).
 static volatile bool            g_imu_mute  = false;
 
 static bool hid_queue_action(const char *gesture, vox_hid_action_t action);
@@ -1293,8 +1293,8 @@ static esp_err_t codec_init(void)
 // =========================================================================
 // BMI270 IMU — orientation-based mic auto-mute
 //
-// Flat on table  -> mic muted (privacy: stick can't pick up nearby talk)
-// Picked up      -> mic live
+// Face or long side on table -> mic muted
+// Standing in portrait       -> mic live
 //
 // 6-axis IMU on the same internal I2C bus as the codec / PMIC, address 0x68.
 // We use Bosch's official driver because the chip refuses to deliver
@@ -1493,18 +1493,22 @@ static void imu_task(void *arg)
             prev_z = data.acc.z;
             have_prev_sample = true;
 
-            // Convention: stick lying flat (face up or face down) on a
-            // table -> |z| dominates. Pick it up to portrait or any
-            // tilted orientation -> |z| drops, |x|/|y| dominate.
+            // Face up/down projects gravity onto z; either long side uses y.
+            // Compare their combined magnitude so roll angle does not change
+            // the shared threshold. Portrait projects onto x and remains live.
+            int16_t y = data.acc.y;
             int16_t z = data.acc.z;
+            int32_t ay = (y < 0) ? -(int32_t)y : (int32_t)y;
             int32_t az = (z < 0) ? -(int32_t)z : (int32_t)z;
+            int64_t transverse_sq = (int64_t)y * y + (int64_t)z * z;
             vox_config_wire_t orientation_cfg = {0};
             vox_config_get(&orientation_cfg);
             uint16_t center = orientation_cfg.flat_mute_threshold_lsb;
             int32_t threshold = prev_flat
                 ? (int32_t)center - IMU_FLAT_HYSTERESIS_LSB
                 : (int32_t)center + IMU_FLAT_HYSTERESIS_LSB;
-            bool sensed_flat = az > threshold;
+            int64_t threshold_sq = (int64_t)threshold * threshold;
+            bool sensed_flat = transverse_sq > threshold_sq;
             if (sensed_flat == prev_flat) {
                 orientation_pending = false;
             } else if (!orientation_pending || pending_flat != sensed_flat) {
@@ -1518,8 +1522,9 @@ static void imu_task(void *arg)
                 g_imu_mute = sensed_flat;
                 bool flat_mute_enabled =
                     orientation_cfg.flat_mute_enabled != 0;
-                ESP_LOGI(TAG, "imu: %s (|z|=%ld threshold=%ld lsb, hold=%u ms, flat_mute=%s)",
+                ESP_LOGI(TAG, "imu: %s (|y|=%ld |z|=%ld threshold=%ld lsb, hold=%u ms, flat_mute=%s)",
                          sensed_flat ? "flat" : "upright",
+                         (long)ay,
                          (long)az,
                          (long)threshold,
                          orientation_cfg.flat_transition_ms,
@@ -1592,7 +1597,7 @@ static esp_err_t uac_input_cb(uint8_t *buf, size_t len, size_t *bytes_read, void
 {
     // Two independent mute paths feed the same silence-the-stream branch:
     //   g_uac_muted - host-side mute (UAC volume control says mic off)
-    //   g_imu_mute  - physical orientation mute (stick lying flat on table)
+    //   g_imu_mute  - physical orientation mute (face or long side on table)
     if (effective_mic_muted()) {
         memset(buf, 0, len);
         vad_update_from_pcm(NULL, 0, false);
@@ -2280,7 +2285,7 @@ void app_main(void)
     if (imu_init() == ESP_OK) {
         xTaskCreate(imu_task, "imu", 4096, NULL, 4, NULL);
     } else {
-        ESP_LOGW(TAG, "imu init failed — flat-detect mute disabled");
+        ESP_LOGW(TAG, "imu init failed — orientation mute disabled");
     }
 
 #if !VOX_DEBUG_NO_UAC

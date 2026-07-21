@@ -17,7 +17,7 @@ required on macOS / Windows / Linux.
 
 ## What it looks like
 
-| StickS3 hardware | Upright = live mic | Flat, screen up = muted |
+| StickS3 hardware | Upright = live mic | Face-up/down or long side = muted |
 |---|---|---|
 | <img src="https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1207/K150-stickS3_main-products_02.webp" alt="M5Stack StickS3 front product photo" width="180"> | <img src="docs/assets/voxstick-upright-live.png" alt="StickS3 upright with VoxStick live microphone LCD" width="180"> | <img src="docs/assets/voxstick-flat-muted.png" alt="StickS3 lying flat, screen up, with VoxStick muted microphone LCD" width="180"> |
 
@@ -42,7 +42,7 @@ work — VoiceInk, MacWhisper Pro, or macOS native Dictation.
    the 240×135 LCD while live; muted mode shows the doghouse
 - **Copilot completion reminder** — this repository's VS Code agent flashes
    the LCD red and green when a task ends
-- **IMU privacy mute** — face-up or face-down on a desk = mic muted
+- **IMU privacy mute** — face-up, face-down, or on either long side = mic muted
 
 ## Hardware
 
@@ -141,7 +141,9 @@ Use the [WebUSB config page](https://openbrt.github.io/voxstick/config.html)
 to change all six runtime button actions, the shake action, and the shared
 long-press threshold without rebuilding firmware. Flat auto-mute and its
 orientation threshold and transition hold time are configurable on the same
-page. Choose pixel dog (the default), Shiba, Corgi, Labrador, or Border Collie;
+page. Face-up/down and either long-side resting positions use the same
+threshold; portrait remains live. Choose pixel dog (the default), Shiba, Corgi,
+Labrador, or Border Collie;
 the [dog preview](https://openbrt.github.io/voxstick/dog-preview.html) shows all
 five styles. Existing devices migrate to the pixel dog without changing saved
 actions or orientation settings. The 350 ms double-click window and boot-time

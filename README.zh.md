@@ -16,7 +16,7 @@
 
 ## 真机和屏幕状态
 
-| 真机外观 | 竖放 = 收音 | 屏幕朝上平放 = 闭麦 |
+| 真机外观 | 竖放 = 收音 | 正面、背面或侧面平放 = 闭麦 |
 |---|---|---|
 | <img src="https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1207/K150-stickS3_main-products_02.webp" alt="M5Stack StickS3 真机正面图" width="180"> | <img src="docs/assets/voxstick-upright-live.png" alt="StickS3 竖放，屏幕显示开麦" width="180"> | <img src="docs/assets/voxstick-flat-muted.png" alt="StickS3 平放，LCD 屏幕朝上并显示闭麦" width="180"> |
 
@@ -51,10 +51,11 @@ voxstick 的恢复默认映射如下；六个 BtnA/BtnB 动作和摇晃动作都
 ## 关键卖点
 
 - **手感对**：物理大按键，不是 fn 也不是软件 hotkey。按一下就一下，不会跟系统快捷键打架
-- **隐私可控**：内置 6 轴 IMU。把棒**屏幕朝上平放桌面 → 麦克风物理静音**，立起来 → 解禁；平放闭麦可在网页里关闭
+- **隐私可控**：内置 6 轴 IMU。把棒正面平放、背面平放或左右侧躺在桌面上 →
+   麦克风物理静音，竖立 → 解禁；所有静音姿态共用同一个角度阈值，平放闭麦可在网页里关闭
 - **板载麦克风**：ES8311 codec + 高灵敏 MEMS 麦克风，远离笔记本风扇噪音
 - **低功耗状态屏**：240×135 LCD 低亮背光 + 五种可选小狗形象：
-   - 屏幕朝上平放或电脑端 mute = 小狗回到狗屋
+   - 正面/背面平放、左右侧躺或电脑端 mute = 小狗回到狗屋
    - 立起来 = 所选小狗出现（像素小狗、柴犬、柯基、拉布拉多或边牧）
    - 说话时 = 小狗跳动并随音量张嘴
 - **Copilot 完成提醒**：本仓库里的 VS Code Agent 任务结束时，LCD 自动红绿交替闪烁
