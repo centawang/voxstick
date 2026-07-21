@@ -1,4 +1,4 @@
-// voxstick firmware — Step 1: USB Audio Class mic only.
+// voxstick firmware — USB Audio microphone with USB/BLE HID keyboard.
 //
 // Pipeline: ES8311 codec (I2C0 config + I2S RX data) → UAC input callback →
 // host sees a 16 kHz / mono / 16-bit USB microphone called "StickS3-Mic".
@@ -21,7 +21,6 @@
 #include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "freertos/semphr.h"
 #include "freertos/queue.h"
 #include "esp_log.h"
 #include "esp_err.h"
@@ -47,6 +46,8 @@
 #include "soc/soc.h"
 #include "bmi270.h"
 #include "bmi2_defs.h"
+#include "ble_hid.h"
+#include "hid_transport.h"
 #include "vox_config.h"
 
 // Set to 1 to skip TinyUSB / UAC init - keeps USB-Serial/JTAG console
@@ -163,6 +164,7 @@ static const char *TAG = "voxstick";
 typedef struct {
     const char *gesture;
     vox_hid_action_t action;
+    vox_hid_target_t target;
 } hid_action_job_t;
 
 // ---- Globals -------------------------------------------------------------
@@ -179,7 +181,8 @@ static uint32_t                 g_diag_tone_phase = 0;
 static volatile uint32_t        g_vad_level = 0;
 static volatile bool            g_vad_active = false;
 static volatile bool            g_vad_display_enabled = false;
-static SemaphoreHandle_t        g_hid_mutex = NULL;
+static bool                     g_clear_ble_bonds_on_boot = false;
+static bool                     g_ignore_buttons_until_release = false;
 static QueueHandle_t            g_hid_action_queue = NULL;
 // IMU orientation-based mute: true when the BMI270 reports the stick is
 // lying flat. ORed into the audio path so flat-on-table = silence,
@@ -187,7 +190,6 @@ static QueueHandle_t            g_hid_action_queue = NULL;
 // and g_codec_ready (codec init failure).
 static volatile bool            g_imu_mute  = false;
 
-static bool hid_send_tap(uint8_t modifier, uint8_t keycode);
 static bool hid_queue_action(const char *gesture, vox_hid_action_t action);
 
 static bool effective_mic_muted(void)
@@ -1231,7 +1233,7 @@ bool tud_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage,
 // BtnA and BtnB single/double/long actions are configurable through NVS.
 // Defaults are Enter/Left Ctrl/Right and Down/Up/Left respectively.
 //
-// USB HID Keyboard/Keypad usage page (0x07):
+// HID Keyboard/Keypad usage page (0x07), shared by USB and BLE:
 //   F13 = 0x68 .. F24 = 0x73   (TinyUSB also exposes HID_KEY_F13..F24)
 //
 // Debounce: a level transition must persist for 2 polls (= 20 ms at the
@@ -1303,9 +1305,6 @@ void voxstick_hid_set_report_cb(uint8_t instance, uint8_t report_id,
 
 static void buttons_init(void)
 {
-    g_hid_mutex = xSemaphoreCreateMutex();
-    ESP_ERROR_CHECK(g_hid_mutex ? ESP_OK : ESP_ERR_NO_MEM);
-
     gpio_config_t cfg = {
         .pin_bit_mask  = (1ULL << BTN_A_GPIO) | (1ULL << BTN_B_GPIO),
         .mode          = GPIO_MODE_INPUT,
@@ -1316,71 +1315,31 @@ static void buttons_init(void)
     ESP_ERROR_CHECK(gpio_config(&cfg));
 }
 
-// Boot-time gesture: hold BtnA + tap side Reset → app starts → app sees
-// BtnA still held → reboot to ROM download mode. Software-driven so the
-// M5StickS3 PMIC's BOOT-pin latch (triggered by long-pressing Reset) is
-// never involved — that latch survives reset and bricks the stick until
-// the battery drains. esptool clears FORCE_DOWNLOAD_BOOT on the next
-// flash so we never get stuck a second time.
-//
-// During runtime BtnA uses the configurable long-press threshold. Holding it
-// at boot remains reserved for ROM-download recovery.
-static void check_boot_button_for_download(void)
+// At boot, BtnA alone enters ROM download while BtnA+BtnB clears BLE bonds.
+// Both are software gestures, avoiding the StickS3 PMIC's persistent BOOT
+// latch that can otherwise require a full battery drain to recover.
+static void check_boot_buttons_for_recovery(void)
 {
-    gpio_reset_pin(BTN_A_GPIO);
-    gpio_set_direction(BTN_A_GPIO, GPIO_MODE_INPUT);
-    gpio_set_pull_mode(BTN_A_GPIO, GPIO_PULLUP_ONLY);
-    // Internal pull-up needs a tick or two of settle before we sample.
+    gpio_config_t cfg = {
+        .pin_bit_mask = (1ULL << BTN_A_GPIO) | (1ULL << BTN_B_GPIO),
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    ESP_ERROR_CHECK(gpio_config(&cfg));
     vTaskDelay(pdMS_TO_TICKS(20));
 
     if (gpio_get_level(BTN_A_GPIO) != 0) {
-        return;     // BtnA not held → continue normal startup
+        return;
+    }
+    if (gpio_get_level(BTN_B_GPIO) == 0) {
+        g_clear_ble_bonds_on_boot = true;
+        g_ignore_buttons_until_release = true;
+        ESP_LOGW(TAG, "BtnA+BtnB held at boot; BLE bonds will be cleared");
+        return;
     }
     enter_rom_download_mode("BtnA held at boot");
-}
-
-// Single/double/long-press disambiguator for BtnA.
-// We delay a single click until the double-click window closes.
-// While the button is held the LCD shifts colour to give feedback:
-//   before long threshold: magenta (still in tap territory)
-//   after  long threshold: blue    (long-press latched)
-static bool hid_submit_keyboard_report(uint8_t modifier, uint8_t keycode,
-                                       uint32_t timeout_ms)
-{
-    uint8_t keys[6] = { keycode };
-    TickType_t start = xTaskGetTickCount();
-    do {
-        if (tud_hid_ready() &&
-            tud_hid_keyboard_report(HID_REPORT_ID_KBD, modifier, keys)) {
-            return true;
-        }
-        vTaskDelay(pdMS_TO_TICKS(1));
-    } while (xTaskGetTickCount() - start < pdMS_TO_TICKS(timeout_ms));
-    return false;
-}
-
-static bool hid_send_tap(uint8_t modifier, uint8_t keycode)
-{
-    if (modifier == 0 && keycode == 0) return false;
-    if (g_hid_mutex &&
-        xSemaphoreTake(g_hid_mutex, pdMS_TO_TICKS(250)) != pdTRUE) {
-        return false;
-    }
-
-    bool down_sent = hid_submit_keyboard_report(modifier, keycode, 150);
-    bool up_sent = false;
-    if (down_sent) {
-        // Wait for TinyUSB to finish the key-down transfer before queuing the
-        // release. Retrying prevents a busy interrupt endpoint from dropping
-        // key-up and leaving a key logically held on the host.
-        up_sent = hid_submit_keyboard_report(0, 0, 250);
-    }
-
-    if (g_hid_mutex) xSemaphoreGive(g_hid_mutex);
-    if (down_sent && !up_sent) {
-        ESP_LOGW(TAG, "HID key release timed out");
-    }
-    return down_sent && up_sent;
 }
 
 static bool hid_send_action(const char *gesture, vox_hid_action_t action)
@@ -1390,13 +1349,35 @@ static bool hid_send_action(const char *gesture, vox_hid_action_t action)
         return true;
     }
 
-    if (action.repeat_count <= 1) {
-        ESP_LOGI(TAG, "%s -> 0x%02x+0x%02x",
-                 gesture, action.modifier, action.keycode);
-        return hid_send_tap(action.modifier, action.keycode);
+    vox_hid_target_t target = vox_hid_transport_select();
+    if (target.route == VOX_HID_ROUTE_NONE) {
+        ESP_LOGW(TAG, "%s ignored; no HID host connected", gesture);
+        return false;
     }
 
-    return hid_queue_action(gesture, action);
+    if (action.repeat_count <= 1) {
+        ESP_LOGI(TAG, "%s -> %s 0x%02x+0x%02x",
+                 gesture, vox_hid_transport_name(target.route),
+                 action.modifier, action.keycode);
+        return vox_hid_transport_send_tap(target, action.modifier,
+                                          action.keycode);
+    }
+
+    hid_action_job_t job = {
+        .gesture = gesture,
+        .action = action,
+        .target = target,
+    };
+    if (g_hid_action_queue == NULL ||
+        xQueueSend(g_hid_action_queue, &job, 0) != pdTRUE) {
+        ESP_LOGW(TAG, "%s repeat ignored; HID action queue unavailable",
+                 gesture);
+        return false;
+    }
+    ESP_LOGI(TAG, "%s queued -> %s 0x%02x+0x%02x x%u",
+             gesture, vox_hid_transport_name(target.route), action.modifier,
+             action.keycode, action.repeat_count);
+    return true;
 }
 
 static bool hid_queue_action(const char *gesture, vox_hid_action_t action)
@@ -1404,6 +1385,12 @@ static bool hid_queue_action(const char *gesture, vox_hid_action_t action)
     if (action.modifier == 0 && action.keycode == 0) {
         ESP_LOGI(TAG, "%s -> disabled", gesture);
         return true;
+    }
+
+    vox_hid_target_t target = vox_hid_transport_select();
+    if (target.route == VOX_HID_ROUTE_NONE) {
+        ESP_LOGW(TAG, "%s ignored; no HID host connected", gesture);
+        return false;
     }
 
     if (g_hid_action_queue == NULL) {
@@ -1415,14 +1402,16 @@ static bool hid_queue_action(const char *gesture, vox_hid_action_t action)
     hid_action_job_t job = {
         .gesture = gesture,
         .action = action,
+        .target = target,
     };
     if (xQueueSend(g_hid_action_queue, &job, 0) != pdTRUE) {
         ESP_LOGW(TAG, "%s repeat ignored; HID action queue full", gesture);
         return false;
     }
 
-    ESP_LOGI(TAG, "%s queued -> 0x%02x+0x%02x x%u",
-             gesture, action.modifier, action.keycode, action.repeat_count);
+    ESP_LOGI(TAG, "%s queued -> %s 0x%02x+0x%02x x%u",
+             gesture, vox_hid_transport_name(target.route), action.modifier,
+             action.keycode, action.repeat_count);
     return true;
 }
 
@@ -1433,14 +1422,17 @@ static void hid_action_worker_task(void *arg)
 
     while (xQueueReceive(g_hid_action_queue, &job, portMAX_DELAY) == pdTRUE) {
         uint8_t sent = 0;
-        while (sent < job.action.repeat_count && tud_mounted()) {
-            if (!hid_send_tap(job.action.modifier, job.action.keycode)) {
+        while (sent < job.action.repeat_count &&
+                    vox_hid_transport_ready(job.target)) {
+                if (!vox_hid_transport_send_tap(job.target, job.action.modifier,
+                                            job.action.keycode)) {
                 break;
             }
             sent++;
         }
-        ESP_LOGI(TAG, "%s repeat batch: %u/%u sent",
-                 job.gesture, sent, job.action.repeat_count);
+        ESP_LOGI(TAG, "%s %s repeat batch: %u/%u sent",
+                 job.gesture, vox_hid_transport_name(job.target.route), sent,
+             job.action.repeat_count);
     }
 }
 
@@ -1493,7 +1485,9 @@ static void mic_unmute_hid_task(void *arg)
 
                 if (left_ctrl_pending && !muted &&
                     now - unmuted_at >= pdMS_TO_TICKS(MIC_UNMUTE_HOLD_MS) &&
-                    hid_send_tap(KEYBOARD_MODIFIER_LEFTCTRL, 0)) {
+                    vox_hid_transport_send_tap(
+                                               vox_hid_transport_target(VOX_HID_ROUTE_USB),
+                                               KEYBOARD_MODIFIER_LEFTCTRL, 0)) {
                     left_ctrl_pending = false;
                     ESP_LOGI(TAG, "mic live for %u ms -> Left Ctrl sent",
                              MIC_UNMUTE_HOLD_MS);
@@ -1507,6 +1501,15 @@ static void mic_unmute_hid_task(void *arg)
 
 static void button_task(void *arg)
 {
+    if (g_ignore_buttons_until_release) {
+        while (gpio_get_level(BTN_A_GPIO) == 0 ||
+               gpio_get_level(BTN_B_GPIO) == 0) {
+            vTaskDelay(pdMS_TO_TICKS(BTN_POLL_MS));
+        }
+        vTaskDelay(pdMS_TO_TICKS(BTN_DEBOUNCE_TICKS * BTN_POLL_MS));
+        g_ignore_buttons_until_release = false;
+    }
+
     bool a_committed = true;     // released = high
     bool a_pending   = true;
     int  a_stable    = 0;
@@ -1679,7 +1682,7 @@ void app_main(void)
     // Recovery path: holding BtnA at boot reroutes us to ROM download
     // mode without touching the PMIC. Must run before any USB OTG init
     // so esptool can talk to the chip on /dev/cu.usbmodem*.
-    check_boot_button_for_download();
+    check_boot_buttons_for_recovery();
 
     ESP_LOGI(TAG, "voxstick boot — fw v0.1.6");
 
@@ -1694,6 +1697,13 @@ void app_main(void)
                  esp_err_to_name(nvs_ret));
     }
     vox_config_init();
+
+    esp_err_t ble_ret = vox_ble_hid_init(g_clear_ble_bonds_on_boot);
+    if (ble_ret != ESP_OK) {
+        ESP_LOGW(TAG, "BLE HID init failed: %s; USB mode remains available",
+                 esp_err_to_name(ble_ret));
+    }
+    ESP_ERROR_CHECK(vox_hid_transport_init());
 
     ESP_ERROR_CHECK(i2c_bus_init());
     ESP_LOGI(TAG, "i2c0 up (SDA=%d SCL=%d)", I2C_SDA_PIN, I2C_SCL_PIN);
@@ -1734,9 +1744,9 @@ void app_main(void)
 #if VOX_DEBUG_NO_UAC
     // Debug build: skip TinyUSB / UAC init so the chip's built-in
     // USB-Serial/JTAG console stays connected and ESP_LOG output is
-    // visible on /dev/cu.usbmodem*. No mic + no HID until we flash a
-    // production build, but we get to see why the codec is failing.
-    ESP_LOGW(TAG, "DEBUG build: UAC + HID skipped, USB-Serial/JTAG kept alive");
+    // visible on /dev/cu.usbmodem*. USB mic/HID are skipped, while BLE HID
+    // remains available so wireless routing can still be diagnosed.
+    ESP_LOGW(TAG, "DEBUG build: USB UAC/HID skipped; BLE HID remains active");
     lcd_status(COL_MAGENTA);
 #else
     ESP_ERROR_CHECK(uac_init());
@@ -1746,7 +1756,6 @@ void app_main(void)
 
     buttons_init();
 
-#if !VOX_DEBUG_NO_UAC
     g_hid_action_queue = xQueueCreate(HID_ACTION_QUEUE_LENGTH,
                                       sizeof(hid_action_job_t));
     if (g_hid_action_queue == NULL ||
@@ -1758,7 +1767,6 @@ void app_main(void)
         }
         ESP_LOGE(TAG, "configurable HID action worker creation failed");
     }
-#endif
 
     xTaskCreate(button_task, "btn", 2048, NULL, 5, NULL);
     ESP_LOGI(TAG, "buttons up (BtnA=GPIO%d BtnB=GPIO%d)",

@@ -1,5 +1,6 @@
 idf_component_register(
-    SRCS "main.c" "usb_descriptors.c" "usb_recovery.c" "vox_config.c"
+    SRCS "main.c" "ble_hid.c" "hid_transport.c"
+         "usb_descriptors.c" "usb_recovery.c" "vox_config.c"
     PRIV_REQUIRES driver
                   esp_driver_gpio
                   esp_driver_i2c
@@ -7,7 +8,9 @@ idf_component_register(
                   esp_driver_ledc
                   esp_driver_spi
                   esp_codec_dev
+                  esp_hid
                   esp_lcd
+                  bt
                   espressif__tinyusb
                   espressif2022__bmi270
                   espressif__i2c_bus

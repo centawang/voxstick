@@ -2,15 +2,18 @@
 
 > **[简体中文 README](README.zh.md)** — 中文版本带微信输入法配置详细教程
 
-USB push-to-talk dictation stick for macOS / Windows, built on the
+Hybrid USB/BLE push-to-talk dictation stick for macOS / Windows, built on the
 M5Stack StickS3 (ESP32-S3).
 
 The stick is a single composite USB device that hosts see as **both** a
 16 kHz microphone *and* a HID keyboard. By default, tap the front button for
 Enter, double-tap for Left Ctrl, or hold to move right. Lay it flat with
 the screen facing up and the IMU mutes the mic automatically. Flat auto-mute
-and all six BtnA/BtnB gesture actions are configurable from the browser. No drivers,
-no companion app, plug-and-play on macOS / Windows / Linux.
+and all seven gesture actions are configurable from the browser. When no USB
+host is mounted, the same actions automatically fall back to the bonded
+`vibestick Keyboard` BLE HID device. USB always has priority; the microphone
+and browser configuration remain USB-only. No drivers or companion app are
+required on macOS / Windows / Linux.
 
 ## What it looks like
 
@@ -63,9 +66,12 @@ The easiest path is the browser installer:
    sound input settings.
 7. **Keyboard check:** tap BtnA to send `Enter`, or double-tap it to send one
    `Left Ctrl` press and release with the default configuration.
-8. **Optional config:** open <https://openbrt.github.io/voxstick/config.html>
-   to change all six BtnA/BtnB actions, flat auto-mute, and the shared
-   long-press threshold.
+8. **BLE fallback:** connect `vibestick Keyboard` in the OS Bluetooth settings.
+   The firmware starts encrypted Just Works bonding automatically and reconnects
+   on later boots. Unplugging USB then routes the same gestures to BLE.
+9. **Optional config:** while USB is connected, open
+   <https://openbrt.github.io/voxstick/config.html> to change all seven
+   actions, flat auto-mute, and the shared long-press threshold.
 
 The installer is powered by
 [ESP Web Tools](https://esphome.github.io/esp-web-tools/) and writes the
@@ -102,7 +108,7 @@ idf.py build flash
 
 ESP-IDF 5.5 + components fetched automatically by IDF Component
 Manager (`espressif/usb_device_uac`, `espressif/esp_codec_dev`,
-`espressif2022/bmi270`).
+`espressif2022/bmi270`) plus ESP-IDF's built-in NimBLE/`esp_hid` components.
 
 For chip recovery (no buttons), see [`tools/trigger-download.sh`](tools/trigger-download.sh).
 
@@ -119,13 +125,21 @@ For chip recovery (no buttons), see [`tools/trigger-download.sh`](tools/trigger-
 | Shake the stick | `Backspace` × 20 | Configurable action; delete up to 20 preceding characters by default |
 | Microphone muted → live for 2 seconds | `Left Ctrl` | Send once only if it stays live continuously |
 | Hold BtnA at boot | (none) | Reboot to ROM download mode for safe re-flash |
+| Hold BtnA + BtnB at boot | (none) | Clear BLE bonds without resetting action mappings |
+
+When USB is enumerated, all configurable actions are sent only through USB HID.
+Without a USB host (including battery operation or a charge-only adapter), they
+are sent only through BLE. A BLE connection may remain open while USB is active,
+but it receives no duplicate reports. The microphone and its two-second unmute
+gesture are USB-only because ESP32-S3 does not support standard Bluetooth audio.
 
 Use the [WebUSB config page](https://openbrt.github.io/voxstick/config.html)
 to change all six runtime button actions, the shake action, and the shared
 long-press threshold without rebuilding firmware. The 350 ms double-click
-window and boot-time BtnA ROM recovery gesture remain fixed. Built-in action
-presets include `Delete` and `Backspace × N`; `N` defaults to 20 and can be set
-from 2 to 100.
+window and boot-time recovery gestures remain fixed. Saved mappings apply to
+both USB and BLE, though the page itself requires USB. Built-in action presets
+include `Delete` and `Backspace × N`; `N` defaults to 20 and can be set from 2
+to 100.
 Boot and USB reconnect establish the microphone-state baseline and do not send
 Left Ctrl. Muting again within the two-second window cancels the pending key.
 

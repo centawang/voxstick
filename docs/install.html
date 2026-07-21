@@ -326,7 +326,8 @@
             <li><strong>硬件：</strong>页面提示烧录完成后，拔掉 USB，双击 StickS3 侧边键关机，再插回 USB 启动新固件。</li>
             <li><strong>电脑系统：</strong>固件启动后，在系统声音输入中选择 <code>StickS3-Mic</code>。</li>
             <li><strong>微信输入法：</strong>打开“设置 → 语音输入 → 免提模式 → 设置快捷键”，按一下 StickS3 正面大按键，绑定 <code>Ctrl+F12</code>（固件实际发左 Ctrl，macOS 可能显示为 <code>⌃F12</code>）。</li>
-            <li><strong>可选配置：</strong>打开 <a href="./config.html">VoxStick 配置页</a>，修改平放闭麦和按键触发键。</li>
+            <li><strong>蓝牙备用：</strong>在系统蓝牙设置中连接 <code>vibestick Keyboard</code>。固件会自动完成加密配对并在以后开机重连；拔掉 USB 后同一组动作切到蓝牙，重新插入后立即恢复 USB 优先。</li>
+            <li><strong>可选配置：</strong>连接 USB 后打开 <a href="./config.html">VoxStick 配置页</a>，修改平放闭麦和七个动作映射；保存结果同时用于 USB 和蓝牙。</li>
           </ol>
         </aside>
       </section>
@@ -337,6 +338,7 @@
           <li>看不到串口：换一根 USB-C 数据线，确认浏览器是桌面版 Chrome/Edge。</li>
           <li>仍然看不到串口：重新长按侧边键约 2 秒，绿色 LED 闪烁后松开。</li>
           <li>已运行 VoxStick 固件时，也可以执行 <code>bash tools/trigger-download.sh</code> 进入下载模式。</li>
+          <li>蓝牙无法重新配对：开机时同时按住 BtnA + BtnB，清除配对记录后重新连接；动作配置不会被清除。</li>
           <li>命令行兜底：<code>esptool.py --chip esp32s3 write_flash 0x0 voxstick-full.bin</code></li>
         </ul>
         <p class="fine-print">

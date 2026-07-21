@@ -327,7 +327,8 @@
             <li><strong>Hardware:</strong> when the page reports completion, unplug USB, double-press the StickS3 side button to power it off, then plug USB back in to boot the new firmware.</li>
             <li><strong>Computer OS:</strong> after the firmware boots, select <code>StickS3-Mic</code> in the system sound input settings.</li>
             <li><strong>WeType / dictation app:</strong> open voice-input shortcut settings, enable hands-free mode, then tap the StickS3 front button to bind <code>Ctrl+F12</code>. VoxStick sends <code>Left Ctrl+F12</code>; macOS may show it as <code>⌃F12</code>.</li>
-            <li><strong>Optional config:</strong> open the <a href="./config.html">VoxStick config page</a> to change flat auto-mute and button shortcut keys.</li>
+            <li><strong>BLE fallback:</strong> connect <code>vibestick Keyboard</code> in the OS Bluetooth settings. Firmware initiates encrypted Just Works bonding and reconnects on later boots. Unplugging USB routes the same actions to BLE; reconnecting USB restores USB priority.</li>
+            <li><strong>Optional config:</strong> while USB is connected, open the <a href="./config.html">VoxStick config page</a> to change flat auto-mute and all seven actions. Saved mappings apply to both USB and BLE.</li>
           </ol>
         </aside>
       </section>
@@ -338,6 +339,7 @@
           <li>No port listed: use desktop Chrome/Edge and try another USB-C data cable.</li>
           <li>Still missing: enter download mode again by holding the side button for about 2 seconds.</li>
           <li>If VoxStick firmware is already running, <code>bash tools/trigger-download.sh</code> can reboot it into download mode.</li>
+          <li>BLE will not re-pair: hold BtnA + BtnB during boot to clear bonds without resetting action mappings.</li>
           <li>Command-line fallback: <code>esptool.py --chip esp32s3 write_flash 0x0 voxstick-full.bin</code></li>
         </ul>
         <p class="fine-print">

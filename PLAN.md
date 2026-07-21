@@ -47,6 +47,13 @@ in whatever app is focused.
 - Effective microphone state `muted → live` for two continuous seconds → one
   `Left Ctrl` tap; muting again cancels the timer, while boot and USB reconnect
   establish a baseline without sending a key
+- USB-mounted HID has strict priority; without a USB host, all seven configured
+  actions fall back to the bonded `vibestick Keyboard` BLE HID device. Route
+  snapshots keep complete taps and repeated batches on one transport
+- BLE HID uses Security Mode 1 Level 2 and proactively initiates Just Works
+  bonding; the encrypted bond persists in NimBLE NVS and reconnects after reboot
+- BtnA at boot keeps ROM recovery; BtnA+BtnB clears BLE bonds without erasing
+  the action configuration. The microphone and WebUSB remain USB-only
 - LCD: minimum viable indicator — red dot in top-right while button is held
 - Mac side: install [VoiceInk](https://github.com/Beingpax/VoiceInk),
   - input device = `StickS3-Mic`
@@ -88,7 +95,7 @@ with optional double-tap-to-toggle-language and IMU wake.
 
 ## Out of scope (for now)
 
-- WiFi / wireless operation — adds host-side daemon and battery management
+- WiFi audio / Bluetooth audio — ESP32-S3 has no Classic HFP or BLE Audio ISO
 - On-device ASR — whisper-tiny on ESP32-S3 is borderline, not worth the
   complexity when Mac-side whisper.cpp is fast and free
 - Cloud ASR — privacy regression vs. local whisper.cpp

@@ -3,15 +3,15 @@
 > 一根插 Mac 就能用的 **中英语音输入棒**，专门跟**微信输入法**搭配丝滑。
 > [English README](README.md)
 
-把麦克风和按键塞进 USB 棒里。**单击 Enter，双击左 Ctrl，长按向右**。
-所有事都靠系统自带的输入法（推荐微信输入法）和 USB 标准协议完成
-——**不装任何驱动，不装任何 menu bar app**。
+把麦克风和按键塞进一根 USB/BLE 双模棒里。**单击 Enter，双击左 Ctrl，长按向右**。
+插 USB 时保持完整麦克风 + 键盘功能；拔掉 USB 后，同一组动作自动切到
+`vibestick Keyboard` 蓝牙键盘。**不装任何驱动，不装任何 menu bar app**。
 
 ```
 [USB-C] → 棒 → Mac
          │
          ├ 16 kHz 麦克风 (USB Audio Class)
-         └ 蓝牙级别的真键盘 (USB HID)：Enter / 左 Ctrl / 方向键 / Backspace
+         └ 真键盘：USB HID 优先 / 无 USB 时 BLE HID
 ```
 
 ## 真机和屏幕状态
@@ -85,7 +85,8 @@ voxstick 的恢复默认映射如下；六个 BtnA/BtnB 动作和摇晃动作都
 5. **硬件：**等烧录完成后拔掉 USB，双击侧边 PWR 键让 StickS3 完全关机，再插回 USB
 6. **电脑系统：**固件启动后，在系统声音输入中选择 `StickS3-Mic`
 7. **按键检查：**默认配置下，单击 BtnA 应发送 `Enter`，双击应发送一次 `左 Ctrl`
-8. **可选配置：**打开 <https://openbrt.github.io/voxstick/config.html>，修改六个 BtnA/BtnB 动作、平放闭麦和共享长按阈值
+8. **蓝牙备用：**在系统蓝牙设置中连接 `vibestick Keyboard`；固件会自动完成加密配对并在以后开机重连，拔掉 USB 后按键自动走蓝牙
+9. **可选配置：**连接 USB 后打开 <https://openbrt.github.io/voxstick/config.html>，修改七个动作、平放闭麦和共享长按阈值
 
 这个页面用的是 [ESP Web Tools](https://esphome.github.io/esp-web-tools/)，
 会把合并好的 `voxstick-full.bin` 从 `0x0` 一次性写进去。网页安装器源码在
@@ -128,8 +129,8 @@ ROM 下载模式。
 
 ## 不只配微信输入法
 
-棒本身只是 USB 标准设备，实际上配任何一个能识别系统麦克风 + 能绑键盘 hotkey
-的工具都成：
+棒在插线时是标准 USB 麦克风 + 键盘，拔线后是标准 BLE 键盘；实际上配任何一个
+能识别系统麦克风 + 能绑键盘 hotkey 的工具都成：
 
 | Mac 工具 | 触发 | 备注 |
 |---|---|---|
@@ -140,7 +141,10 @@ ROM 下载模式。
 
 表中的按键是恢复默认值；配置页可分别修改 BtnA/BtnB 的单击、双击、长按和
 有效摇晃动作，也可调整共享长按阈值和平放闭麦。双击窗口固定为 350 ms，
-开机按住 BtnA 的 ROM 恢复手势不可配置。内置预设包含 `Delete` 和
+这些映射同时用于 USB 和 BLE，但配置页本身需要 USB。USB 枚举后始终优先，
+蓝牙连接保持空闲且不会重复发键；拔 USB 后自动回到蓝牙。麦克风只走 USB。
+开机按住 BtnA 进入 ROM；同时按住 BtnA+BtnB 会清除蓝牙配对但保留动作配置。
+内置预设包含 `Delete` 和
 `Backspace × N`；`N` 默认为 20，可配置范围为 2–100。
 
 ## 路线图
@@ -153,10 +157,10 @@ ROM 下载模式。
 - ✅ 麦克风取消静音并保持 2 秒触发一次左 Ctrl
 - ✅ LCD 状态显示
 - ✅ 网页配置页（七动作、平放闭麦、共享长按阈值）
+- ✅ USB 优先、无 USB 自动切换 BLE 键盘
 
 可能加的（看反馈）：
 - ⏳ 拔 USB 自动深度睡眠（电池续航 24h+）
-- ⏳ BLE PTT（拔了 USB 还能键盘 PTT）
 - ⏳ Windows 测试 + 更顺的 hotkey 配置（Windows 没 F-key 黑名单）
 
 ## License

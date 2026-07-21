@@ -6,7 +6,7 @@
     <title>vibestick 配置</title>
     <meta
       name="description"
-      content="通过 WebUSB 配置 vibestick 的平放闭麦和按键触发键。"
+      content="通过 WebUSB 配置 vibestick 的 USB/BLE 共用按键映射和平放闭麦。"
     />
     <style>
       :root {
@@ -408,6 +408,10 @@
           <p id="status" class="status">
             请使用桌面版 Chrome 或 Microsoft Edge 打开本页。
           </p>
+          <p class="fine-print">
+            本页需要 USB 连接；保存后的七个动作映射同时用于 USB HID 和 BLE HID。
+            USB 枚举时优先走 USB，拔线后自动切换到蓝牙键盘。
+          </p>
 
           <form id="configForm">
             <fieldset id="configFieldset" disabled>
@@ -494,7 +498,8 @@
             <dd id="summaryPress">-</dd>
           </dl>
           <p class="fine-print">
-            配置保存在设备 NVS 中。摇晃映射需要协议 v4 固件。
+            配置保存在设备 NVS 中。蓝牙设备名为 vibestick Keyboard；
+            开机同时按住 BtnA + BtnB 可清除蓝牙配对而不重置本页配置。
           </p>
         </aside>
       </section>
