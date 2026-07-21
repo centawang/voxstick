@@ -105,6 +105,23 @@ static vox_config_v3_wire_t config_v3_from_current(vox_config_wire_t const *cfg)
     };
 }
 
+static vox_config_v4_wire_t config_v4_from_current(vox_config_wire_t const *cfg)
+{
+    return (vox_config_v4_wire_t) {
+        .flat_mute_enabled = cfg->flat_mute_enabled,
+        .reserved = 0,
+        .btn_a_single = cfg->btn_a_single,
+        .btn_a_double = cfg->btn_a_double,
+        .btn_a_long = cfg->btn_a_long,
+        .btn_b_single = cfg->btn_b_single,
+        .btn_b_double = cfg->btn_b_double,
+        .btn_b_long = cfg->btn_b_long,
+        .shake = cfg->shake,
+        .long_press_ms = cfg->long_press_ms,
+        .reserved2 = 0,
+    };
+}
+
 static vox_hid_action_t action_from_v2(vox_hid_action_v2_t action)
 {
     return (vox_hid_action_t) {
@@ -152,6 +169,10 @@ static void write_config_response(uint8_t itf, uint8_t protocol_version,
             vox_config_v3_wire_t legacy = config_v3_from_current(cfg);
             payload_len = sizeof(legacy);
             memcpy(resp + CFG_HEADER_LEN, &legacy, payload_len);
+        } else if (protocol_version == VOX_CONFIG_PROTOCOL_VERSION_V4) {
+            vox_config_v4_wire_t legacy = config_v4_from_current(cfg);
+            payload_len = sizeof(legacy);
+            memcpy(resp + CFG_HEADER_LEN, &legacy, payload_len);
         } else {
             payload_len = sizeof(*cfg);
             memcpy(resp + CFG_HEADER_LEN, cfg, payload_len);
@@ -190,6 +211,7 @@ static bool handle_config_packet(uint8_t itf,
     uint8_t command = buffer[5];
     uint16_t payload_len = read_u16_le(buffer + 6);
     if ((version != VOX_CONFIG_PROTOCOL_VERSION &&
+            version != VOX_CONFIG_PROTOCOL_VERSION_V4 &&
             version != VOX_CONFIG_PROTOCOL_VERSION_V3 &&
             version != VOX_CONFIG_PROTOCOL_VERSION_V2 &&
             version != VOX_CONFIG_PROTOCOL_VERSION_V1) ||
@@ -276,6 +298,16 @@ static bool handle_config_packet(uint8_t itf,
             cfg.btn_b_double = legacy.btn_b_double;
             cfg.btn_b_long = legacy.btn_b_long;
             cfg.long_press_ms = legacy.long_press_ms;
+        } else if (version == VOX_CONFIG_PROTOCOL_VERSION_V4) {
+            if (payload_len != sizeof(vox_config_v4_wire_t)) {
+                write_config_response(itf, version,
+                                      VOX_CONFIG_STATUS_BAD_REQ, NULL);
+                return true;
+            }
+            vox_config_v4_wire_t legacy = {0};
+            memcpy(&legacy, buffer + CFG_HEADER_LEN, sizeof(legacy));
+            vox_config_get(&cfg);
+            memcpy(&cfg, &legacy, sizeof(legacy));
         } else {
             if (payload_len != sizeof(cfg)) {
                 write_config_response(itf, version,

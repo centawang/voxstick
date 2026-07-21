@@ -849,11 +849,14 @@ static esp_err_t codec_init(void)
 #define IMU_I2C_ADDR             BMI2_I2C_PRIM_ADDR    // 0x68
 #define IMU_I2C_SPEED_HZ         400000
 #define IMU_TX_BUF_LEN           64                    // > read_write_len + 1
-// |Z accel| above this fraction of 1 g => "lying flat", mute.
-//   16384 LSB = 1 g at ±2 g range, 16-bit. 0.7 g ~= 11500.
-#define IMU_FLAT_THRESHOLD_LSB   11500
-// Hysteresis to prevent chatter when the stick is at 45° on a stack of paper.
-#define IMU_LIVE_THRESHOLD_LSB   9500
+// One configurable center controls both orientation transitions. Keep fixed
+// hysteresis around it to prevent chatter near the selected angle.
+#define IMU_FLAT_HYSTERESIS_LSB  1000
+_Static_assert(VOX_CONFIG_FLAT_THRESHOLD_MIN_LSB > IMU_FLAT_HYSTERESIS_LSB,
+               "flat threshold can underflow hysteresis");
+_Static_assert(VOX_CONFIG_FLAT_THRESHOLD_MAX_LSB +
+                   IMU_FLAT_HYSTERESIS_LSB < INT16_MAX,
+               "flat threshold can overflow accelerometer range");
 #define IMU_POLL_MS              20
 // A deliberate shake creates two rapid, opposing acceleration-vector changes.
 // Requiring separate excursions rejects normal orientation changes and bumps.
@@ -1036,19 +1039,19 @@ static void imu_task(void *arg)
             // tilted orientation -> |z| drops, |x|/|y| dominate.
             int16_t z = data.acc.z;
             int32_t az = (z < 0) ? -(int32_t)z : (int32_t)z;
-            bool flat;
-            if (prev_flat) {
-                flat = (az > IMU_LIVE_THRESHOLD_LSB);
-            } else {
-                flat = (az > IMU_FLAT_THRESHOLD_LSB);
-            }
+            uint16_t center = vox_config_flat_mute_threshold_lsb();
+            int32_t threshold = prev_flat
+                ? (int32_t)center - IMU_FLAT_HYSTERESIS_LSB
+                : (int32_t)center + IMU_FLAT_HYSTERESIS_LSB;
+            bool flat = az > threshold;
             if (flat != prev_flat) {
                 prev_flat = flat;
                 g_imu_mute = flat;
                 bool flat_mute_enabled = vox_config_flat_mute_enabled();
-                ESP_LOGI(TAG, "imu: %s (|z|=%ld lsb, flat_mute=%s)",
+                ESP_LOGI(TAG, "imu: %s (|z|=%ld threshold=%ld lsb, flat_mute=%s)",
                          flat ? "flat" : "upright",
                          (long)az,
+                         (long)threshold,
                          flat_mute_enabled ? "on" : "off");
                 // Refresh the LCD when not in VAD-display mode so the
                 // user has visual confirmation of the mute state.

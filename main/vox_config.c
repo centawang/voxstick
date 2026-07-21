@@ -7,11 +7,12 @@
 #include "nvs.h"
 
 #define VOX_CONFIG_MAGIC        0x31474656u  // "VFG1", little-endian
-#define VOX_CONFIG_STORE_VER    7
+#define VOX_CONFIG_STORE_VER    8
 #define VOX_CONFIG_STORE_VER_MIN_LEGACY 1
 #define VOX_CONFIG_STORE_VER_MAX_LEGACY 4
 #define VOX_CONFIG_STORE_VER_V5 5
 #define VOX_CONFIG_STORE_VER_V6 6
+#define VOX_CONFIG_STORE_VER_V7 7
 #define VOX_CONFIG_NAMESPACE    "voxstick"
 #define VOX_CONFIG_KEY          "cfg"
 
@@ -56,13 +57,22 @@ typedef struct __attribute__((packed)) {
     vox_config_v3_wire_t data;
 } vox_config_v6_store_t;
 
+typedef struct __attribute__((packed)) {
+    uint32_t magic;
+    uint16_t version;
+    uint16_t size;
+    vox_config_v4_wire_t data;
+} vox_config_v7_store_t;
+
 _Static_assert(sizeof(vox_config_legacy_store_t) == 20,
                "legacy config store size changed");
 _Static_assert(sizeof(vox_config_v5_store_t) == 28,
                "v5 config store size changed");
 _Static_assert(sizeof(vox_config_v6_store_t) == 34,
                "v6 config store size changed");
-_Static_assert(sizeof(vox_config_store_t) == 37,
+_Static_assert(sizeof(vox_config_v7_store_t) == 37,
+               "v7 config store size changed");
+_Static_assert(sizeof(vox_config_store_t) == 39,
                "current config store size changed");
 
 static const char *TAG = "voxstick";
@@ -83,6 +93,7 @@ static vox_config_wire_t default_config(void)
         .shake = { .modifier = 0, .keycode = HID_KEY_BACKSPACE, .repeat_count = 20 },
         .long_press_ms = 600,
         .reserved2 = 0,
+        .flat_mute_threshold_lsb = VOX_CONFIG_FLAT_THRESHOLD_DEFAULT_LSB,
     };
 }
 
@@ -119,6 +130,10 @@ static bool config_valid(vox_config_wire_t const *cfg)
     }
     if (cfg->long_press_ms < LONG_PRESS_MIN_MS ||
         cfg->long_press_ms > LONG_PRESS_MAX_MS) {
+        return false;
+    }
+    if (cfg->flat_mute_threshold_lsb < VOX_CONFIG_FLAT_THRESHOLD_MIN_LSB ||
+        cfg->flat_mute_threshold_lsb > VOX_CONFIG_FLAT_THRESHOLD_MAX_LSB) {
         return false;
     }
     return true;
@@ -178,6 +193,31 @@ static esp_err_t config_load(vox_config_wire_t *out, bool *migrated)
             return ESP_ERR_INVALID_STATE;
         }
         *out = store.data;
+        return ESP_OK;
+    }
+
+    if (len == sizeof(vox_config_v7_store_t)) {
+        vox_config_v7_store_t store = {0};
+        size_t read_len = sizeof(store);
+        ret = nvs_get_blob(nvs, VOX_CONFIG_KEY, &store, &read_len);
+        nvs_close(nvs);
+        if (ret != ESP_OK) {
+            return ret;
+        }
+        if (read_len != sizeof(store) ||
+            store.magic != VOX_CONFIG_MAGIC ||
+            store.version != VOX_CONFIG_STORE_VER_V7 ||
+            store.size != sizeof(store)) {
+            return ESP_ERR_INVALID_STATE;
+        }
+
+        vox_config_wire_t migrated_cfg = default_config();
+        memcpy(&migrated_cfg, &store.data, sizeof(store.data));
+        if (!config_valid(&migrated_cfg)) {
+            return ESP_ERR_INVALID_STATE;
+        }
+        *out = migrated_cfg;
+        *migrated = true;
         return ESP_OK;
     }
 
@@ -318,8 +358,9 @@ void vox_config_init(void)
     s_config = cfg;
     portEXIT_CRITICAL(&s_config_lock);
 
-    ESP_LOGI(TAG, "config: flat_mute=%u long=%u ms",
-             cfg.flat_mute_enabled, cfg.long_press_ms);
+    ESP_LOGI(TAG, "config: flat_mute=%u threshold=%u lsb long=%u ms",
+             cfg.flat_mute_enabled, cfg.flat_mute_threshold_lsb,
+             cfg.long_press_ms);
     log_action("BtnA single", cfg.btn_a_single);
     log_action("BtnA double", cfg.btn_a_double);
     log_action("BtnA long", cfg.btn_a_long);
@@ -348,6 +389,15 @@ bool vox_config_flat_mute_enabled(void)
     return enabled;
 }
 
+uint16_t vox_config_flat_mute_threshold_lsb(void)
+{
+    uint16_t threshold;
+    portENTER_CRITICAL(&s_config_lock);
+    threshold = s_config.flat_mute_threshold_lsb;
+    portEXIT_CRITICAL(&s_config_lock);
+    return threshold;
+}
+
 esp_err_t vox_config_set(vox_config_wire_t const *cfg)
 {
     if (cfg == NULL) {
@@ -371,8 +421,10 @@ esp_err_t vox_config_set(vox_config_wire_t const *cfg)
     s_config = normalized;
     portEXIT_CRITICAL(&s_config_lock);
 
-    ESP_LOGI(TAG, "config saved: flat_mute=%u long=%u ms",
-             normalized.flat_mute_enabled, normalized.long_press_ms);
+    ESP_LOGI(TAG, "config saved: flat_mute=%u threshold=%u lsb long=%u ms",
+             normalized.flat_mute_enabled,
+             normalized.flat_mute_threshold_lsb,
+             normalized.long_press_ms);
     log_action("BtnA single", normalized.btn_a_single);
     log_action("BtnA double", normalized.btn_a_double);
     log_action("BtnA long", normalized.btn_a_long);

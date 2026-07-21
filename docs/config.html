@@ -6,7 +6,7 @@
     <title>vibestick 配置</title>
     <meta
       name="description"
-      content="通过 WebUSB 配置 vibestick 的 USB/BLE 共用按键映射和平放闭麦。"
+      content="通过 WebUSB 配置 vibestick 的 USB/BLE 共用按键映射、平放闭麦和姿态阈值。"
     />
     <style>
       :root {
@@ -423,6 +423,21 @@
               </div>
 
               <div class="setting">
+                <label for="flatThresholdDegrees">平放 / 竖立阈值（°）</label>
+                <input
+                  id="flatThresholdDegrees"
+                  type="number"
+                  min="20"
+                  max="60"
+                  step="0.1"
+                  inputmode="decimal"
+                />
+                <p class="fine-print">
+                  相对竖立方向的中心角度；数值越大，需要放得更平才闭麦。开、闭麦切换会自动保留滞回。
+                </p>
+              </div>
+
+              <div class="setting">
                 <div class="sub-label">BtnA 映射</div>
                 <div id="btnAActions"></div>
               </div>
@@ -480,6 +495,8 @@
             <dd id="summaryConnection">未连接</dd>
             <dt>平放闭麦</dt>
             <dd id="summaryFlat">-</dd>
+            <dt>姿态阈值</dt>
+            <dd id="summaryFlatThreshold">-</dd>
             <dt>BtnA 单击</dt>
             <dd id="summaryASingle">-</dd>
             <dt>BtnA 双击</dt>
@@ -510,17 +527,21 @@
 
       const VOX_VID = 0x303a;
       const VOX_PID = 0x8001;
-      const PROTOCOL_VERSION = 4;
+      const PROTOCOL_VERSION = 5;
       const CMD_GET = 1;
       const CMD_SET = 2;
       const CMD_RESET = 3;
       const STATUS_OK = 0;
-      const CONFIG_SIZE = 29;
+      const CONFIG_SIZE = 31;
       const TRANSFER_TIMEOUT_MS = 1500;
       const CONNECTION_TIMEOUT_MS = 5000;
+      const ACCEL_1G_LSB = 16384;
+      const FLAT_THRESHOLD_MIN_DEGREES = 20;
+      const FLAT_THRESHOLD_MAX_DEGREES = 60;
 
       const DEFAULT_CONFIG = {
         flatMute: true,
+        flatThresholdLsb: 10500,
         aSingleModifier: 0,
         aSingleKeycode: 0x28,
         aSingleRepeat: 1,
@@ -639,7 +660,7 @@
       };
 
       const STATUS_TEXT = {
-        1: "设备不认识这条配置请求。",
+        1: "设备不认识这条配置请求，请刷入支持姿态阈值的协议 v5 固件。",
         2: "配置值不合法。",
         3: "设备保存配置失败。",
       };
@@ -743,6 +764,21 @@
         const key = keyName(keycode);
         const action = mods ? `${mods} + ${key}` : key;
         return repeatCount > 1 ? `${action} × ${repeatCount}` : action;
+      }
+
+      function flatThresholdDegreesToLsb(degrees) {
+        return Math.round(
+          Math.sin((degrees * Math.PI) / 180) * ACCEL_1G_LSB,
+        );
+      }
+
+      function flatThresholdLsbToDegrees(lsb) {
+        const ratio = Math.max(0, Math.min(1, lsb / ACCEL_1G_LSB));
+        return (Math.asin(ratio) * 180) / Math.PI;
+      }
+
+      function formatFlatThresholdDegrees(lsb) {
+        return flatThresholdLsbToDegrees(lsb).toFixed(1);
       }
 
       function setModifierUi(kind, mask) {
@@ -888,6 +924,9 @@
 
       function writeConfigUi(config) {
         $("flatMute").checked = config.flatMute;
+        $("flatThresholdDegrees").value = formatFlatThresholdDegrees(
+          config.flatThresholdLsb,
+        );
         for (const { kind } of ACTION_DEFS) {
           writeActionUi(
             kind,
@@ -901,12 +940,25 @@
       }
 
       function readConfigUi() {
+        const flatThresholdDegrees = Number(
+          $("flatThresholdDegrees").value,
+        );
+        if (
+          !Number.isFinite(flatThresholdDegrees) ||
+          flatThresholdDegrees < FLAT_THRESHOLD_MIN_DEGREES ||
+          flatThresholdDegrees > FLAT_THRESHOLD_MAX_DEGREES
+        ) {
+          throw new Error("平放 / 竖立阈值必须在 20° 到 60° 之间。");
+        }
         const longPressMs = Number($("longPressMs").value);
         if (longPressMs < 250 || longPressMs > 2000) {
           throw new Error("长按阈值必须在 250 到 2000 ms 之间。");
         }
         const config = {
           flatMute: $("flatMute").checked,
+          flatThresholdLsb: flatThresholdDegreesToLsb(
+            flatThresholdDegrees,
+          ),
           longPressMs,
         };
         for (const { kind } of ACTION_DEFS) {
@@ -929,6 +981,7 @@
       function updateSummary(config = readConfigUiSafe()) {
         if (!config) {
           $("summaryFlat").textContent = "-";
+          $("summaryFlatThreshold").textContent = "-";
           for (const { summary } of ACTION_DEFS) {
             $(summary).textContent = "-";
           }
@@ -936,6 +989,8 @@
           return;
         }
         $("summaryFlat").textContent = config.flatMute ? "开启" : "关闭";
+        $("summaryFlatThreshold").textContent =
+          `${formatFlatThresholdDegrees(config.flatThresholdLsb)}°`;
         for (const { kind, summary } of ACTION_DEFS) {
           $(summary).textContent = actionName(
             config[`${kind}Modifier`],
@@ -1028,7 +1083,7 @@
         }
         const response = await withTimeout(
           state.device.transferIn(state.inEndpoint, 64),
-          "读取配置超时，请先刷入支持摇晃映射的协议 v4 固件。",
+          "读取配置超时，请先刷入支持姿态阈值的协议 v5 固件。",
         );
         return parseResponse(response);
       }
@@ -1046,6 +1101,7 @@
         });
         view.setUint16(23, config.longPressMs, true);
         view.setUint32(25, 0, true);
+        view.setUint16(29, config.flatThresholdLsb, true);
         return payload;
       }
 
@@ -1082,6 +1138,7 @@
           shakeKeycode: payload[21],
           shakeRepeat: payload[22],
           longPressMs: view.getUint16(23, true),
+          flatThresholdLsb: view.getUint16(29, true),
         };
       }
 
