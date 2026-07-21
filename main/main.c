@@ -1844,40 +1844,7 @@ static void check_boot_buttons_for_recovery(void)
 
 static bool hid_send_action(const char *gesture, vox_hid_action_t action)
 {
-    if (action.modifier == 0 && action.keycode == 0) {
-        ESP_LOGI(TAG, "%s -> disabled", gesture);
-        return true;
-    }
-
-    vox_hid_target_t target = vox_hid_transport_select();
-    if (target.route == VOX_HID_ROUTE_NONE) {
-        ESP_LOGW(TAG, "%s ignored; no HID host connected", gesture);
-        return false;
-    }
-
-    if (action.repeat_count <= 1) {
-        ESP_LOGI(TAG, "%s -> %s 0x%02x+0x%02x",
-                 gesture, vox_hid_transport_name(target.route),
-                 action.modifier, action.keycode);
-        return vox_hid_transport_send_tap(target, action.modifier,
-                                          action.keycode);
-    }
-
-    hid_action_job_t job = {
-        .gesture = gesture,
-        .action = action,
-        .target = target,
-    };
-    if (g_hid_action_queue == NULL ||
-        xQueueSend(g_hid_action_queue, &job, 0) != pdTRUE) {
-        ESP_LOGW(TAG, "%s repeat ignored; HID action queue unavailable",
-                 gesture);
-        return false;
-    }
-    ESP_LOGI(TAG, "%s queued -> %s 0x%02x+0x%02x x%u",
-             gesture, vox_hid_transport_name(target.route), action.modifier,
-             action.keycode, action.repeat_count);
-    return true;
+    return hid_queue_action(gesture, action);
 }
 
 static bool hid_queue_action(const char *gesture, vox_hid_action_t action)
@@ -2259,7 +2226,7 @@ void app_main(void)
     g_hid_action_queue = xQueueCreate(HID_ACTION_QUEUE_LENGTH,
                                       sizeof(hid_action_job_t));
     if (g_hid_action_queue == NULL ||
-        xTaskCreate(hid_action_worker_task, "hid_action", 3072,
+        xTaskCreate(hid_action_worker_task, "hid_action", 4096,
                     NULL, 4, NULL) != pdPASS) {
         if (g_hid_action_queue != NULL) {
             vQueueDelete(g_hid_action_queue);
