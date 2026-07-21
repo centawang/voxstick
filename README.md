@@ -71,8 +71,8 @@ The easiest path is the browser installer:
    on later boots. Unplugging USB then routes the same gestures to BLE.
 9. **Optional config:** while USB is connected, open
    <https://openbrt.github.io/voxstick/config.html> to change all seven
-   actions, flat auto-mute, its orientation threshold, and the shared
-   long-press threshold.
+   actions, flat auto-mute, its orientation threshold and transition hold
+   time, and the shared long-press threshold.
 
 The installer is powered by
 [ESP Web Tools](https://esphome.github.io/esp-web-tools/) and writes the
@@ -137,11 +137,11 @@ gesture are USB-only because ESP32-S3 does not support standard Bluetooth audio.
 Use the [WebUSB config page](https://openbrt.github.io/voxstick/config.html)
 to change all six runtime button actions, the shake action, and the shared
 long-press threshold without rebuilding firmware. Flat auto-mute and its
-orientation threshold are configurable on the same page. The 350 ms
-double-click window and boot-time recovery gestures remain fixed. Saved
-mappings apply to both USB and BLE, though the page itself requires USB.
-Built-in action presets include `Delete` and `Backspace × N`; `N` defaults to
-20 and can be set from 2 to 100.
+orientation threshold and transition hold time are configurable on the same
+page. The 350 ms double-click window and boot-time recovery gestures remain
+fixed. Saved mappings apply to both USB and BLE, though the page itself
+requires USB. Built-in action presets include `Delete` and `Backspace × N`;
+`N` defaults to 20 and can be set from 2 to 100.
 Boot and USB reconnect establish the microphone-state baseline and do not send
 Left Ctrl. Muting again within the two-second window cancels the pending key.
 

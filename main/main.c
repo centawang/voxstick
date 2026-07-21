@@ -946,6 +946,9 @@ static void imu_task(void *arg)
 {
     struct bmi2_sens_data data = {0};
     bool prev_flat = false;
+    bool orientation_pending = false;
+    bool pending_flat = false;
+    TickType_t orientation_pending_since = 0;
     bool have_prev_sample = false;
     int16_t prev_x = 0;
     int16_t prev_y = 0;
@@ -1039,24 +1042,36 @@ static void imu_task(void *arg)
             // tilted orientation -> |z| drops, |x|/|y| dominate.
             int16_t z = data.acc.z;
             int32_t az = (z < 0) ? -(int32_t)z : (int32_t)z;
-            uint16_t center = vox_config_flat_mute_threshold_lsb();
+            vox_config_wire_t orientation_cfg = {0};
+            vox_config_get(&orientation_cfg);
+            uint16_t center = orientation_cfg.flat_mute_threshold_lsb;
             int32_t threshold = prev_flat
                 ? (int32_t)center - IMU_FLAT_HYSTERESIS_LSB
                 : (int32_t)center + IMU_FLAT_HYSTERESIS_LSB;
-            bool flat = az > threshold;
-            if (flat != prev_flat) {
-                prev_flat = flat;
-                g_imu_mute = flat;
-                bool flat_mute_enabled = vox_config_flat_mute_enabled();
-                ESP_LOGI(TAG, "imu: %s (|z|=%ld threshold=%ld lsb, flat_mute=%s)",
-                         flat ? "flat" : "upright",
+            bool sensed_flat = az > threshold;
+            if (sensed_flat == prev_flat) {
+                orientation_pending = false;
+            } else if (!orientation_pending || pending_flat != sensed_flat) {
+                orientation_pending = true;
+                pending_flat = sensed_flat;
+                orientation_pending_since = now;
+            } else if (now - orientation_pending_since >=
+                       pdMS_TO_TICKS(orientation_cfg.flat_transition_ms)) {
+                prev_flat = sensed_flat;
+                orientation_pending = false;
+                g_imu_mute = sensed_flat;
+                bool flat_mute_enabled =
+                    orientation_cfg.flat_mute_enabled != 0;
+                ESP_LOGI(TAG, "imu: %s (|z|=%ld threshold=%ld lsb, hold=%u ms, flat_mute=%s)",
+                         sensed_flat ? "flat" : "upright",
                          (long)az,
                          (long)threshold,
+                         orientation_cfg.flat_transition_ms,
                          flat_mute_enabled ? "on" : "off");
                 // Refresh the LCD when not in VAD-display mode so the
                 // user has visual confirmation of the mute state.
                 if (!g_vad_display_enabled) {
-                    if (flat && flat_mute_enabled) {
+                    if (sensed_flat && flat_mute_enabled) {
                         lcd_status(COL_DIM_RED);
                     } else {
                         lcd_status(g_codec_ready ? COL_GREEN : COL_RED);

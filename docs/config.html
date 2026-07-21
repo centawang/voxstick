@@ -6,7 +6,7 @@
     <title>vibestick 配置</title>
     <meta
       name="description"
-      content="通过 WebUSB 配置 vibestick 的 USB/BLE 共用按键映射、平放闭麦和姿态阈值。"
+      content="通过 WebUSB 配置 vibestick 的 USB/BLE 共用按键映射、平放闭麦、姿态阈值和切换保持时间。"
     />
     <style>
       :root {
@@ -438,6 +438,21 @@
               </div>
 
               <div class="setting">
+                <label for="flatTransitionMs">姿态切换保持时间（ms）</label>
+                <input
+                  id="flatTransitionMs"
+                  type="number"
+                  min="50"
+                  max="2000"
+                  step="50"
+                  inputmode="numeric"
+                />
+                <p class="fine-print">
+                  平放或竖立条件必须连续满足这段时间才切换状态；两个方向共用此值。
+                </p>
+              </div>
+
+              <div class="setting">
                 <div class="sub-label">BtnA 映射</div>
                 <div id="btnAActions"></div>
               </div>
@@ -497,6 +512,8 @@
             <dd id="summaryFlat">-</dd>
             <dt>姿态阈值</dt>
             <dd id="summaryFlatThreshold">-</dd>
+            <dt>切换保持时间</dt>
+            <dd id="summaryFlatTransition">-</dd>
             <dt>BtnA 单击</dt>
             <dd id="summaryASingle">-</dd>
             <dt>BtnA 双击</dt>
@@ -527,21 +544,24 @@
 
       const VOX_VID = 0x303a;
       const VOX_PID = 0x8001;
-      const PROTOCOL_VERSION = 5;
+      const PROTOCOL_VERSION = 6;
       const CMD_GET = 1;
       const CMD_SET = 2;
       const CMD_RESET = 3;
       const STATUS_OK = 0;
-      const CONFIG_SIZE = 31;
+      const CONFIG_SIZE = 33;
       const TRANSFER_TIMEOUT_MS = 1500;
       const CONNECTION_TIMEOUT_MS = 5000;
       const ACCEL_1G_LSB = 16384;
       const FLAT_THRESHOLD_MIN_DEGREES = 20;
       const FLAT_THRESHOLD_MAX_DEGREES = 60;
+      const FLAT_TRANSITION_MIN_MS = 50;
+      const FLAT_TRANSITION_MAX_MS = 2000;
 
       const DEFAULT_CONFIG = {
         flatMute: true,
         flatThresholdLsb: 10500,
+        flatTransitionMs: 300,
         aSingleModifier: 0,
         aSingleKeycode: 0x28,
         aSingleRepeat: 1,
@@ -660,7 +680,7 @@
       };
 
       const STATUS_TEXT = {
-        1: "设备不认识这条配置请求，请刷入支持姿态阈值的协议 v5 固件。",
+        1: "设备不认识这条配置请求，请刷入支持姿态切换保持时间的协议 v6 固件。",
         2: "配置值不合法。",
         3: "设备保存配置失败。",
       };
@@ -927,6 +947,7 @@
         $("flatThresholdDegrees").value = formatFlatThresholdDegrees(
           config.flatThresholdLsb,
         );
+        $("flatTransitionMs").value = String(config.flatTransitionMs);
         for (const { kind } of ACTION_DEFS) {
           writeActionUi(
             kind,
@@ -950,6 +971,14 @@
         ) {
           throw new Error("平放 / 竖立阈值必须在 20° 到 60° 之间。");
         }
+        const flatTransitionMs = Number($("flatTransitionMs").value);
+        if (
+          !Number.isInteger(flatTransitionMs) ||
+          flatTransitionMs < FLAT_TRANSITION_MIN_MS ||
+          flatTransitionMs > FLAT_TRANSITION_MAX_MS
+        ) {
+          throw new Error("姿态切换保持时间必须是 50 到 2000 ms 之间的整数。");
+        }
         const longPressMs = Number($("longPressMs").value);
         if (longPressMs < 250 || longPressMs > 2000) {
           throw new Error("长按阈值必须在 250 到 2000 ms 之间。");
@@ -959,6 +988,7 @@
           flatThresholdLsb: flatThresholdDegreesToLsb(
             flatThresholdDegrees,
           ),
+          flatTransitionMs,
           longPressMs,
         };
         for (const { kind } of ACTION_DEFS) {
@@ -982,6 +1012,7 @@
         if (!config) {
           $("summaryFlat").textContent = "-";
           $("summaryFlatThreshold").textContent = "-";
+          $("summaryFlatTransition").textContent = "-";
           for (const { summary } of ACTION_DEFS) {
             $(summary).textContent = "-";
           }
@@ -991,6 +1022,8 @@
         $("summaryFlat").textContent = config.flatMute ? "开启" : "关闭";
         $("summaryFlatThreshold").textContent =
           `${formatFlatThresholdDegrees(config.flatThresholdLsb)}°`;
+        $("summaryFlatTransition").textContent =
+          `${config.flatTransitionMs} ms`;
         for (const { kind, summary } of ACTION_DEFS) {
           $(summary).textContent = actionName(
             config[`${kind}Modifier`],
@@ -1083,7 +1116,7 @@
         }
         const response = await withTimeout(
           state.device.transferIn(state.inEndpoint, 64),
-          "读取配置超时，请先刷入支持姿态阈值的协议 v5 固件。",
+          "读取配置超时，请先刷入支持姿态切换保持时间的协议 v6 固件。",
         );
         return parseResponse(response);
       }
@@ -1102,6 +1135,7 @@
         view.setUint16(23, config.longPressMs, true);
         view.setUint32(25, 0, true);
         view.setUint16(29, config.flatThresholdLsb, true);
+        view.setUint16(31, config.flatTransitionMs, true);
         return payload;
       }
 
@@ -1139,6 +1173,7 @@
           shakeRepeat: payload[22],
           longPressMs: view.getUint16(23, true),
           flatThresholdLsb: view.getUint16(29, true),
+          flatTransitionMs: view.getUint16(31, true),
         };
       }
 

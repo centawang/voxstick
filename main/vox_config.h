@@ -9,7 +9,8 @@
 extern "C" {
 #endif
 
-#define VOX_CONFIG_PROTOCOL_VERSION     5
+#define VOX_CONFIG_PROTOCOL_VERSION     6
+#define VOX_CONFIG_PROTOCOL_VERSION_V5  5
 #define VOX_CONFIG_PROTOCOL_VERSION_V4  4
 #define VOX_CONFIG_PROTOCOL_VERSION_V3  3
 #define VOX_CONFIG_PROTOCOL_VERSION_V2  2
@@ -27,6 +28,9 @@ extern "C" {
 #define VOX_CONFIG_FLAT_THRESHOLD_DEFAULT_LSB 10500
 #define VOX_CONFIG_FLAT_THRESHOLD_MIN_LSB      5600
 #define VOX_CONFIG_FLAT_THRESHOLD_MAX_LSB     14200
+#define VOX_CONFIG_FLAT_TRANSITION_DEFAULT_MS   300
+#define VOX_CONFIG_FLAT_TRANSITION_MIN_MS        50
+#define VOX_CONFIG_FLAT_TRANSITION_MAX_MS      2000
 
 typedef struct __attribute__((packed)) {
     uint8_t modifier;
@@ -52,7 +56,23 @@ typedef struct __attribute__((packed)) {
     uint16_t long_press_ms;
     uint32_t reserved2;
     uint16_t flat_mute_threshold_lsb;
+    uint16_t flat_transition_ms;
 } vox_config_wire_t;
+
+typedef struct __attribute__((packed)) {
+    uint8_t  flat_mute_enabled;
+    uint8_t  reserved;
+    vox_hid_action_t btn_a_single;
+    vox_hid_action_t btn_a_double;
+    vox_hid_action_t btn_a_long;
+    vox_hid_action_t btn_b_single;
+    vox_hid_action_t btn_b_double;
+    vox_hid_action_t btn_b_long;
+    vox_hid_action_t shake;
+    uint16_t long_press_ms;
+    uint32_t reserved2;
+    uint16_t flat_mute_threshold_lsb;
+} vox_config_v5_wire_t;
 
 typedef struct __attribute__((packed)) {
     uint8_t  flat_mute_enabled;
@@ -111,32 +131,38 @@ _Static_assert(sizeof(vox_config_v1_wire_t) == 12, "v1 config wire size changed"
 _Static_assert(sizeof(vox_config_v2_wire_t) == 20, "v2 config wire size changed");
 _Static_assert(sizeof(vox_config_v3_wire_t) == 26, "v3 config wire size changed");
 _Static_assert(sizeof(vox_config_v4_wire_t) == 29, "v4 config wire size changed");
-_Static_assert(sizeof(vox_config_wire_t) == 31, "v5 config wire size changed");
+_Static_assert(sizeof(vox_config_v5_wire_t) == 31, "v5 config wire size changed");
+_Static_assert(sizeof(vox_config_wire_t) == 33, "v6 config wire size changed");
 _Static_assert(offsetof(vox_config_wire_t, flat_mute_enabled) == 0,
-               "v5 flat-mute offset changed");
+               "v6 flat-mute offset changed");
 _Static_assert(offsetof(vox_config_wire_t, btn_a_single) == 2,
-               "v5 BtnA single offset changed");
+               "v6 BtnA single offset changed");
 _Static_assert(offsetof(vox_config_wire_t, btn_a_double) == 5,
-               "v5 BtnA double offset changed");
+               "v6 BtnA double offset changed");
 _Static_assert(offsetof(vox_config_wire_t, btn_a_long) == 8,
-               "v5 BtnA long offset changed");
+               "v6 BtnA long offset changed");
 _Static_assert(offsetof(vox_config_wire_t, btn_b_single) == 11,
-               "v5 BtnB single offset changed");
+               "v6 BtnB single offset changed");
 _Static_assert(offsetof(vox_config_wire_t, btn_b_double) == 14,
-               "v5 BtnB double offset changed");
+               "v6 BtnB double offset changed");
 _Static_assert(offsetof(vox_config_wire_t, btn_b_long) == 17,
-               "v5 BtnB long offset changed");
+               "v6 BtnB long offset changed");
 _Static_assert(offsetof(vox_config_wire_t, shake) == 20,
-               "v5 shake offset changed");
+               "v6 shake offset changed");
 _Static_assert(offsetof(vox_config_wire_t, long_press_ms) == 23,
-               "v5 long-press offset changed");
+               "v6 long-press offset changed");
 _Static_assert(offsetof(vox_config_wire_t, reserved2) == 25,
-               "v5 reserved offset changed");
+               "v6 reserved offset changed");
 _Static_assert(offsetof(vox_config_wire_t, flat_mute_threshold_lsb) == 29,
-               "v5 flat threshold offset changed");
+               "v6 flat threshold offset changed");
 _Static_assert(offsetof(vox_config_wire_t, flat_mute_threshold_lsb) ==
                    sizeof(vox_config_v4_wire_t),
                "v4 config must remain a v5 prefix");
+_Static_assert(offsetof(vox_config_wire_t, flat_transition_ms) == 31,
+               "v6 flat transition offset changed");
+_Static_assert(offsetof(vox_config_wire_t, flat_transition_ms) ==
+                   sizeof(vox_config_v5_wire_t),
+               "v5 config must remain a v6 prefix");
 
 void vox_config_init(void);
 void vox_config_get(vox_config_wire_t *out);

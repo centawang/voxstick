@@ -86,7 +86,7 @@ voxstick 的恢复默认映射如下；六个 BtnA/BtnB 动作和摇晃动作都
 6. **电脑系统：**固件启动后，在系统声音输入中选择 `StickS3-Mic`
 7. **按键检查：**默认配置下，单击 BtnA 应发送 `Enter`，双击应发送一次 `左 Ctrl`
 8. **蓝牙备用：**在系统蓝牙设置中连接 `vibestick Keyboard`；固件会自动完成加密配对并在以后开机重连，拔掉 USB 后按键自动走蓝牙
-9. **可选配置：**连接 USB 后打开 <https://openbrt.github.io/voxstick/config.html>，修改七个动作、平放闭麦、姿态阈值和共享长按阈值
+9. **可选配置：**连接 USB 后打开 <https://openbrt.github.io/voxstick/config.html>，修改七个动作、平放闭麦、姿态阈值、切换保持时间和共享长按阈值
 
 这个页面用的是 [ESP Web Tools](https://esphome.github.io/esp-web-tools/)，
 会把合并好的 `voxstick-full.bin` 从 `0x0` 一次性写进去。网页安装器源码在
@@ -140,9 +140,10 @@ ROM 下载模式。
 | [MacWhisper Pro](https://goodsnooze.com/macwhisper) | 自定义 | whisper-large + GPT 纠错，$19 |
 
 表中的按键是恢复默认值；配置页可分别修改 BtnA/BtnB 的单击、双击、长按和
-有效摇晃动作，也可调整共享长按阈值、平放闭麦和姿态阈值。双击窗口固定为
-350 ms，这些映射同时用于 USB 和 BLE，但配置页本身需要 USB。USB 枚举后
-始终优先，蓝牙连接保持空闲且不会重复发键；拔 USB 后自动回到蓝牙。麦克风只走 USB。
+有效摇晃动作，也可调整共享长按阈值、平放闭麦、姿态阈值和切换保持时间。
+双击窗口固定为 350 ms，这些映射同时用于 USB 和 BLE，但配置页本身需要
+USB。USB 枚举后始终优先，蓝牙连接保持空闲且不会重复发键；拔 USB 后自动
+回到蓝牙。麦克风只走 USB。
 开机按住 BtnA 进入 ROM；同时按住 BtnA+BtnB 会清除蓝牙配对但保留动作配置。
 内置预设包含 `Delete` 和
 `Backspace × N`；`N` 默认为 20，可配置范围为 2–100。
@@ -156,7 +157,7 @@ ROM 下载模式。
 - ✅ IMU 摇晃默认触发 20 次 Backspace，并可独立配置
 - ✅ 麦克风取消静音并保持 2 秒触发一次左 Ctrl
 - ✅ LCD 状态显示
-- ✅ 网页配置页（七动作、平放闭麦、姿态阈值、共享长按阈值）
+- ✅ 网页配置页（七动作、平放闭麦、姿态阈值、切换保持时间、共享长按阈值）
 - ✅ USB 优先、无 USB 自动切换 BLE 键盘
 
 可能加的（看反馈）：
