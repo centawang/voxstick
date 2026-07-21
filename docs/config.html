@@ -517,6 +517,7 @@
       const STATUS_OK = 0;
       const CONFIG_SIZE = 29;
       const TRANSFER_TIMEOUT_MS = 1500;
+      const CONNECTION_TIMEOUT_MS = 5000;
 
       const DEFAULT_CONFIG = {
         flatMute: true,
@@ -568,6 +569,7 @@
       const PRESET_OPTIONS = [
         { value: "enter", label: "Enter" },
         { value: "leftCtrl", label: "左 Ctrl" },
+        { value: "rightAlt", label: "右 Alt" },
         { value: "rightArrow", label: "向右方向键" },
         { value: "leftArrow", label: "向左方向键" },
         { value: "downArrow", label: "向下方向键" },
@@ -622,6 +624,7 @@
       const ACTION_PRESETS = {
         enter: { modifier: 0, keycode: 0x28, repeatCount: 1 },
         leftCtrl: { modifier: 0x01, keycode: 0, repeatCount: 1 },
+        rightAlt: { modifier: 0x40, keycode: 0, repeatCount: 1 },
         rightArrow: { modifier: 0, keycode: 0x4f, repeatCount: 1 },
         leftArrow: { modifier: 0, keycode: 0x50, repeatCount: 1 },
         downArrow: { modifier: 0, keycode: 0x51, repeatCount: 1 },
@@ -673,11 +676,15 @@
         setDirty(false);
       }
 
-      function withTimeout(promise, message) {
+      function withTimeout(
+        promise,
+        message,
+        timeoutMs = TRANSFER_TIMEOUT_MS,
+      ) {
         return new Promise((resolve, reject) => {
           const timer = window.setTimeout(
             () => reject(new Error(message)),
-            TRANSFER_TIMEOUT_MS,
+            timeoutMs,
           );
           promise.then(
             (value) => {
@@ -1114,27 +1121,65 @@
           throw new Error("当前浏览器不支持 WebUSB。");
         }
         setStatus("正在连接...");
-        const device = await navigator.usb.requestDevice({
-          filters: [{ vendorId: VOX_VID, productId: VOX_PID }],
-        });
-        await device.open();
-        if (device.configuration === null) {
-          await device.selectConfiguration(1);
-        }
-        const endpoints = findVendorInterface(device.configuration);
-        await device.claimInterface(endpoints.interfaceNumber);
-        if (endpoints.alternateSetting !== 0) {
-          await device.selectAlternateInterface(
-            endpoints.interfaceNumber,
-            endpoints.alternateSetting,
+        let device = null;
+        let claimedInterface = null;
+        try {
+          device = await navigator.usb.requestDevice({
+            filters: [{ vendorId: VOX_VID, productId: VOX_PID }],
+          });
+          await withTimeout(
+            device.open(),
+            "打开 VoxStick 超时，请重新插拔设备后重试。",
+            CONNECTION_TIMEOUT_MS,
           );
+          if (device.configuration === null) {
+            await withTimeout(
+              device.selectConfiguration(1),
+              "选择 USB 配置超时，请重新插拔设备后重试。",
+              CONNECTION_TIMEOUT_MS,
+            );
+          }
+          const endpoints = findVendorInterface(device.configuration);
+          await withTimeout(
+            device.claimInterface(endpoints.interfaceNumber),
+            "连接配置接口超时。Windows 用户请刷入支持 WinUSB 的最新固件。",
+            CONNECTION_TIMEOUT_MS,
+          );
+          claimedInterface = endpoints.interfaceNumber;
+          if (endpoints.alternateSetting !== 0) {
+            await device.selectAlternateInterface(
+              endpoints.interfaceNumber,
+              endpoints.alternateSetting,
+            );
+          }
+          state.device = device;
+          state.interfaceNumber = endpoints.interfaceNumber;
+          state.inEndpoint = endpoints.inEndpoint;
+          state.outEndpoint = endpoints.outEndpoint;
+          setConnected(true);
+          await loadConfig();
+        } catch (error) {
+          if (device?.opened) {
+            try {
+              const claimed = device.configuration?.interfaces.find(
+                (iface) => iface.interfaceNumber === claimedInterface,
+              );
+              if (claimed?.claimed) {
+                await device.releaseInterface(claimedInterface);
+              }
+              await device.close();
+            } catch {
+              // Best-effort cleanup; preserve the original connection error.
+            }
+          }
+          if (state.device === device) {
+            state.device = null;
+            state.interfaceNumber = null;
+            state.inEndpoint = null;
+            state.outEndpoint = null;
+          }
+          throw error;
         }
-        state.device = device;
-        state.interfaceNumber = endpoints.interfaceNumber;
-        state.inEndpoint = endpoints.inEndpoint;
-        state.outEndpoint = endpoints.outEndpoint;
-        setConnected(true);
-        await loadConfig();
       }
 
       function handleUiChange(event) {

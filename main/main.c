@@ -143,6 +143,7 @@ static const char *TAG = "voxstick";
 
 // Short enough for deliberate tooling, long enough for normal host jitter.
 #define DOWNLOAD_MAGIC_WINDOW_MS 2000
+#define VENDOR_REQUEST_MICROSOFT  0x20
 #define VENDOR_DOWNLOAD_REQUEST  0x5D
 #define VENDOR_DOWNLOAD_VALUE    0x5344  // "SD"
 #define VENDOR_DOWNLOAD_INDEX    0x4C44  // "LD"
@@ -1191,6 +1192,7 @@ static void uac_set_volume_cb(uint32_t volume, void *arg)
 // silently gets dropped. ESP-IDF's main isn't built with --whole-archive.
 extern uint8_t const *tud_descriptor_device_cb(void);
 extern uint8_t const *tud_descriptor_configuration_cb(uint8_t index);
+extern uint8_t const desc_ms_os_20[];
 extern void voxstick_force_link_usb_recovery(void);
 __attribute__((used)) static const void *const _link_usb_descriptors[] = {
     (const void *)tud_descriptor_device_cb,
@@ -1224,6 +1226,16 @@ bool tud_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage,
         ESP_LOGW(TAG, "USB vendor download magic");
         request_rom_download("USB vendor magic requested ROM download", 150);
         return tud_control_status(rhport, request);
+    }
+
+    if (request->bmRequestType_bit.type == TUSB_REQ_TYPE_VENDOR &&
+        request->bRequest == VENDOR_REQUEST_MICROSOFT &&
+        request->wIndex == 7) {
+        uint16_t total_len = 0;
+        memcpy(&total_len, desc_ms_os_20 + 8, sizeof(total_len));
+        return tud_control_xfer(rhport, request,
+                                (void *)(uintptr_t)desc_ms_os_20,
+                                total_len);
     }
 
     return false;

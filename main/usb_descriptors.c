@@ -29,6 +29,9 @@
 #define DESC_PRODUCT        "StickS3-Mic"
 #define DESC_SERIAL         "0001"
 
+#define VENDOR_REQUEST_MICROSOFT 0x20
+#define MS_OS_20_DESC_LEN        0xB2
+
 // =========================================================================
 // Interface numbering — we are CONFIG_USB_DEVICE_UAC_AS_PART=y, so we own
 // the ITF_NUM_* enum.
@@ -56,7 +59,7 @@ enum {
 tusb_desc_device_t const desc_device = {
     .bLength            = sizeof(tusb_desc_device_t),
     .bDescriptorType    = TUSB_DESC_DEVICE,
-    .bcdUSB             = 0x0200,
+    .bcdUSB             = 0x0210,
 
     // Multi-class device → IAD-aware enumeration on the host side.
     .bDeviceClass       = TUSB_CLASS_MISC,
@@ -66,7 +69,8 @@ tusb_desc_device_t const desc_device = {
 
     .idVendor           = DESC_VID,
     .idProduct          = DESC_PID,
-    .bcdDevice          = 0x0100,
+    // Revision 0x0101 adds automatic WinUSB binding for the vendor interface.
+    .bcdDevice          = 0x0101,
 
     .iManufacturer      = 0x01,
     .iProduct           = 0x02,
@@ -156,6 +160,71 @@ uint8_t const *tud_descriptor_configuration_cb(uint8_t index)
     (void)index;
     return desc_configuration;
 }
+
+// =========================================================================
+// Microsoft OS 2.0 descriptor — bind only the vendor interface to WinUSB.
+// =========================================================================
+#define BOS_TOTAL_LEN (TUD_BOS_DESC_LEN + TUD_BOS_MICROSOFT_OS_DESC_LEN)
+
+uint8_t const desc_bos[] = {
+    TUD_BOS_DESCRIPTOR(BOS_TOTAL_LEN, 1),
+    TUD_BOS_MS_OS_20_DESCRIPTOR(MS_OS_20_DESC_LEN,
+                                VENDOR_REQUEST_MICROSOFT),
+};
+
+uint8_t const *tud_descriptor_bos_cb(void)
+{
+    return desc_bos;
+}
+
+uint8_t const desc_ms_os_20[] = {
+    // Set header.
+    U16_TO_U8S_LE(0x000A),
+    U16_TO_U8S_LE(MS_OS_20_SET_HEADER_DESCRIPTOR),
+    U32_TO_U8S_LE(0x06030000),
+    U16_TO_U8S_LE(MS_OS_20_DESC_LEN),
+
+    // Configuration subset header.
+    U16_TO_U8S_LE(0x0008),
+    U16_TO_U8S_LE(MS_OS_20_SUBSET_HEADER_CONFIGURATION),
+    0, 0,
+    U16_TO_U8S_LE(MS_OS_20_DESC_LEN - 0x0A),
+
+    // Function subset header: interface 3 is the vendor control interface.
+    U16_TO_U8S_LE(0x0008),
+    U16_TO_U8S_LE(MS_OS_20_SUBSET_HEADER_FUNCTION),
+    ITF_NUM_VENDOR, 0,
+    U16_TO_U8S_LE(MS_OS_20_DESC_LEN - 0x0A - 0x08),
+
+    // Compatible ID: Windows' built-in WinUSB driver.
+    U16_TO_U8S_LE(0x0014),
+    U16_TO_U8S_LE(MS_OS_20_FEATURE_COMPATBLE_ID),
+    'W', 'I', 'N', 'U', 'S', 'B', 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+
+    // DeviceInterfaceGUIDs REG_MULTI_SZ property.
+    U16_TO_U8S_LE(MS_OS_20_DESC_LEN - 0x0A - 0x08 - 0x08 - 0x14),
+    U16_TO_U8S_LE(MS_OS_20_FEATURE_REG_PROPERTY),
+    U16_TO_U8S_LE(0x0007),
+    U16_TO_U8S_LE(0x002A),
+    'D', 0x00, 'e', 0x00, 'v', 0x00, 'i', 0x00, 'c', 0x00,
+    'e', 0x00, 'I', 0x00, 'n', 0x00, 't', 0x00, 'e', 0x00,
+    'r', 0x00, 'f', 0x00, 'a', 0x00, 'c', 0x00, 'e', 0x00,
+    'G', 0x00, 'U', 0x00, 'I', 0x00, 'D', 0x00, 's', 0x00,
+    0x00, 0x00,
+    U16_TO_U8S_LE(0x0050),
+    '{', 0x00, 'F', 0x00, 'C', 0x00, '8', 0x00, 'E', 0x00,
+    '4', 0x00, 'D', 0x00, '7', 0x00, '3', 0x00, '-', 0x00,
+    '0', 0x00, '0', 0x00, '4', 0x00, 'D', 0x00, '-', 0x00,
+    '4', 0x00, '9', 0x00, 'C', 0x00, '7', 0x00, '-', 0x00,
+    '8', 0x00, 'E', 0x00, '4', 0x00, '6', 0x00, '-', 0x00,
+    'F', 0x00, 'F', 0x00, '8', 0x00, '3', 0x00, 'B', 0x00,
+    '8', 0x00, 'D', 0x00, '1', 0x00, 'D', 0x00, 'D', 0x00,
+    'F', 0x00, '2', 0x00, '}', 0x00, 0x00, 0x00, 0x00, 0x00,
+};
+
+TU_VERIFY_STATIC(sizeof(desc_ms_os_20) == MS_OS_20_DESC_LEN,
+                 "Microsoft OS 2.0 descriptor size mismatch");
 
 // =========================================================================
 // String descriptors
