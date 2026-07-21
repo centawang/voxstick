@@ -9,7 +9,8 @@
 extern "C" {
 #endif
 
-#define VOX_CONFIG_PROTOCOL_VERSION     7
+#define VOX_CONFIG_PROTOCOL_VERSION     8
+#define VOX_CONFIG_PROTOCOL_VERSION_V7  7
 #define VOX_CONFIG_PROTOCOL_VERSION_V6  6
 #define VOX_CONFIG_PROTOCOL_VERSION_V5  5
 #define VOX_CONFIG_PROTOCOL_VERSION_V4  4
@@ -20,6 +21,7 @@ extern "C" {
 #define VOX_CONFIG_CMD_GET   1
 #define VOX_CONFIG_CMD_SET   2
 #define VOX_CONFIG_CMD_RESET 3
+#define VOX_CONFIG_CMD_NOTIFY 4
 
 #define VOX_CONFIG_STATUS_OK       0
 #define VOX_CONFIG_STATUS_BAD_REQ  1
@@ -40,6 +42,10 @@ extern "C" {
 #define VOX_DOG_STYLE_COLLIE      4
 #define VOX_DOG_STYLE_COUNT       5
 #define VOX_DOG_STYLE_DEFAULT     VOX_DOG_STYLE_PIXEL
+
+#define VOX_CONFIG_COMPLETION_FLASH_DEFAULT 3
+#define VOX_CONFIG_COMPLETION_FLASH_MIN     0
+#define VOX_CONFIG_COMPLETION_FLASH_MAX    10
 
 typedef struct __attribute__((packed)) {
     uint8_t modifier;
@@ -67,7 +73,25 @@ typedef struct __attribute__((packed)) {
     uint16_t flat_mute_threshold_lsb;
     uint16_t flat_transition_ms;
     uint8_t  dog_style;
+    uint8_t  completion_flash_count;
 } vox_config_wire_t;
+
+typedef struct __attribute__((packed)) {
+    uint8_t  flat_mute_enabled;
+    uint8_t  reserved;
+    vox_hid_action_t btn_a_single;
+    vox_hid_action_t btn_a_double;
+    vox_hid_action_t btn_a_long;
+    vox_hid_action_t btn_b_single;
+    vox_hid_action_t btn_b_double;
+    vox_hid_action_t btn_b_long;
+    vox_hid_action_t shake;
+    uint16_t long_press_ms;
+    uint32_t reserved2;
+    uint16_t flat_mute_threshold_lsb;
+    uint16_t flat_transition_ms;
+    uint8_t  dog_style;
+} vox_config_v7_wire_t;
 
 typedef struct __attribute__((packed)) {
     uint8_t  flat_mute_enabled;
@@ -159,9 +183,10 @@ _Static_assert(sizeof(vox_config_v3_wire_t) == 26, "v3 config wire size changed"
 _Static_assert(sizeof(vox_config_v4_wire_t) == 29, "v4 config wire size changed");
 _Static_assert(sizeof(vox_config_v5_wire_t) == 31, "v5 config wire size changed");
 _Static_assert(sizeof(vox_config_v6_wire_t) == 33, "v6 config wire size changed");
-_Static_assert(sizeof(vox_config_wire_t) == 34, "v7 config wire size changed");
+_Static_assert(sizeof(vox_config_v7_wire_t) == 34, "v7 config wire size changed");
+_Static_assert(sizeof(vox_config_wire_t) == 35, "v8 config wire size changed");
 _Static_assert(offsetof(vox_config_wire_t, flat_mute_enabled) == 0,
-               "v7 flat-mute offset changed");
+               "v8 flat-mute offset changed");
 _Static_assert(offsetof(vox_config_wire_t, btn_a_single) == 2,
                "v6 BtnA single offset changed");
 _Static_assert(offsetof(vox_config_wire_t, btn_a_double) == 5,
@@ -195,12 +220,18 @@ _Static_assert(offsetof(vox_config_wire_t, dog_style) == 33,
 _Static_assert(offsetof(vox_config_wire_t, dog_style) ==
                    sizeof(vox_config_v6_wire_t),
                "v6 config must remain a v7 prefix");
+_Static_assert(offsetof(vox_config_wire_t, completion_flash_count) == 34,
+               "v8 completion flash count offset changed");
+_Static_assert(offsetof(vox_config_wire_t, completion_flash_count) ==
+                   sizeof(vox_config_v7_wire_t),
+               "v7 config must remain a v8 prefix");
 
 void vox_config_init(void);
 void vox_config_get(vox_config_wire_t *out);
 bool vox_config_flat_mute_enabled(void);
 uint16_t vox_config_flat_mute_threshold_lsb(void);
 uint8_t vox_config_dog_style(void);
+uint8_t vox_config_completion_flash_count(void);
 esp_err_t vox_config_set(vox_config_wire_t const *cfg);
 esp_err_t vox_config_reset(void);
 

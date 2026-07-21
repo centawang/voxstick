@@ -75,8 +75,16 @@ in whatever app is focused.
 **Goal**: stick becomes a status panel — `recording → transcribing → preview`,
 with optional double-tap-to-toggle-language and IMU wake.
 
-- Add a third interface to the composite: USB CDC, a simple line-oriented
-  channel for Mac → device messages
+- Current implementation uses the existing WinUSB/WebUSB vendor interface as
+  the Mac → device reverse channel; no extra CDC endpoints are required
+- VS Code Agent `Stop` hook sends an acknowledged completion command over that
+  interface. The LCD flashes red/green for a configurable 0–10 rounds (default
+  3), then restores its latest mascot state
+- The hook uses an acknowledged device-level vendor control request, so it does
+  not need to claim the bulk configuration interface. It is repository-scoped,
+  silently skips unavailable USB devices, and lazily compiles a small libusb
+  helper on macOS/Linux
+- Future status messages can extend the same framed vendor protocol
 - Mac daemon (Swift / Node, ~150 LOC):
   - either: tail VoiceInk's log / observe its state notifications and forward
   - or: implement the PTT loop directly (CGEventTap → AVAudioEngine →
@@ -89,7 +97,7 @@ with optional double-tap-to-toggle-language and IMU wake.
   cached PCM buffer, IMU wake
 
 **Risks**
-- Composite three-EP layout (UAC iso + HID intr + CDC bulk) is tight on S3
+- VS Code Agent Hooks are currently a preview feature and may change format
 - VoiceInk doesn't expose IPC for state — would force "implement own PTT"
   branch, which is more work but more controllable
 

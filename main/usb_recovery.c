@@ -16,6 +16,7 @@
 #include "soc/rtc_cntl_reg.h"
 #include "soc/soc.h"
 #include "vox_config.h"
+#include "vox_notify.h"
 
 #define VENDOR_DOWNLOAD_MAGIC "VOXSTICK_DOWNLOAD"
 #define CFG_REQ_MAGIC "VXCF"
@@ -159,6 +160,26 @@ static vox_config_v6_wire_t config_v6_from_current(vox_config_wire_t const *cfg)
     };
 }
 
+static vox_config_v7_wire_t config_v7_from_current(vox_config_wire_t const *cfg)
+{
+    return (vox_config_v7_wire_t) {
+        .flat_mute_enabled = cfg->flat_mute_enabled,
+        .reserved = 0,
+        .btn_a_single = cfg->btn_a_single,
+        .btn_a_double = cfg->btn_a_double,
+        .btn_a_long = cfg->btn_a_long,
+        .btn_b_single = cfg->btn_b_single,
+        .btn_b_double = cfg->btn_b_double,
+        .btn_b_long = cfg->btn_b_long,
+        .shake = cfg->shake,
+        .long_press_ms = cfg->long_press_ms,
+        .reserved2 = 0,
+        .flat_mute_threshold_lsb = cfg->flat_mute_threshold_lsb,
+        .flat_transition_ms = cfg->flat_transition_ms,
+        .dog_style = cfg->dog_style,
+    };
+}
+
 static vox_hid_action_t action_from_v2(vox_hid_action_v2_t action)
 {
     return (vox_hid_action_t) {
@@ -218,6 +239,10 @@ static void write_config_response(uint8_t itf, uint8_t protocol_version,
             vox_config_v6_wire_t legacy = config_v6_from_current(cfg);
             payload_len = sizeof(legacy);
             memcpy(resp + CFG_HEADER_LEN, &legacy, payload_len);
+        } else if (protocol_version == VOX_CONFIG_PROTOCOL_VERSION_V7) {
+            vox_config_v7_wire_t legacy = config_v7_from_current(cfg);
+            payload_len = sizeof(legacy);
+            memcpy(resp + CFG_HEADER_LEN, &legacy, payload_len);
         } else {
             payload_len = sizeof(*cfg);
             memcpy(resp + CFG_HEADER_LEN, cfg, payload_len);
@@ -256,6 +281,7 @@ static bool handle_config_packet(uint8_t itf,
     uint8_t command = buffer[5];
     uint16_t payload_len = read_u16_le(buffer + 6);
     if ((version != VOX_CONFIG_PROTOCOL_VERSION &&
+            version != VOX_CONFIG_PROTOCOL_VERSION_V7 &&
             version != VOX_CONFIG_PROTOCOL_VERSION_V6 &&
             version != VOX_CONFIG_PROTOCOL_VERSION_V5 &&
             version != VOX_CONFIG_PROTOCOL_VERSION_V4 &&
@@ -375,6 +401,16 @@ static bool handle_config_packet(uint8_t itf,
             memcpy(&legacy, buffer + CFG_HEADER_LEN, sizeof(legacy));
             vox_config_get(&cfg);
             memcpy(&cfg, &legacy, sizeof(legacy));
+        } else if (version == VOX_CONFIG_PROTOCOL_VERSION_V7) {
+            if (payload_len != sizeof(vox_config_v7_wire_t)) {
+                write_config_response(itf, version,
+                                      VOX_CONFIG_STATUS_BAD_REQ, NULL);
+                return true;
+            }
+            vox_config_v7_wire_t legacy = {0};
+            memcpy(&legacy, buffer + CFG_HEADER_LEN, sizeof(legacy));
+            vox_config_get(&cfg);
+            memcpy(&cfg, &legacy, sizeof(legacy));
         } else {
             if (payload_len != sizeof(cfg)) {
                 write_config_response(itf, version,
@@ -407,6 +443,16 @@ static bool handle_config_packet(uint8_t itf,
         }
         vox_config_get(&cfg);
         write_config_response(itf, version, VOX_CONFIG_STATUS_OK, &cfg);
+        return true;
+
+    case VOX_CONFIG_CMD_NOTIFY:
+        if (version != VOX_CONFIG_PROTOCOL_VERSION || payload_len != 0) {
+            write_config_response(itf, version,
+                                  VOX_CONFIG_STATUS_BAD_REQ, NULL);
+            return true;
+        }
+        vox_notify_copilot_done();
+        write_config_response(itf, version, VOX_CONFIG_STATUS_OK, NULL);
         return true;
 
     default:

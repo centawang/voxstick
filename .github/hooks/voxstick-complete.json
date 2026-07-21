@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "type": "command",
+        "command": "bash tools/copilot-complete-hook.sh",
+        "osx": "bash tools/copilot-complete-hook.sh",
+        "linux": "bash tools/copilot-complete-hook.sh",
+        "windows": "cmd /c exit 0",
+        "cwd": ".",
+        "timeout": 3
+      }
+    ]
+  }
+}

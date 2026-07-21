@@ -40,6 +40,8 @@ work — VoiceInk, MacWhisper Pro, or macOS native Dictation.
 - **Dedicated MEMS mic** + ES8311 codec, away from your laptop fan
 - **Low-power status display** — dim backlight + one of five animated dogs on
    the 240×135 LCD while live; muted mode shows the doghouse
+- **Copilot completion reminder** — this repository's VS Code agent flashes
+   the LCD red and green when a task ends
 - **IMU privacy mute** — face-up or face-down on a desk = mic muted
 
 ## Hardware
@@ -72,7 +74,8 @@ The easiest path is the browser installer:
 9. **Optional config:** while USB is connected, open
    <https://openbrt.github.io/voxstick/config.html> to change all seven
    actions, flat auto-mute, its orientation threshold and transition hold
-   time, the shared long-press threshold, and the LCD dog style.
+   time, the shared long-press threshold, LCD dog style, and Copilot completion
+   flash count.
 
 The installer is powered by
 [ESP Web Tools](https://esphome.github.io/esp-web-tools/) and writes the
@@ -147,6 +150,24 @@ though the page itself requires USB. Built-in action presets include `Delete`
 and `Backspace × N`; `N` defaults to 20 and can be set from 2 to 100.
 Boot and USB reconnect establish the microphone-state baseline and do not send
 Left Ctrl. Muting again within the two-second window cancels the pending key.
+
+## Copilot completion reminder
+
+This repository includes a VS Code Agent `Stop` hook in
+[`.github/hooks/voxstick-complete.json`](.github/hooks/voxstick-complete.json)
+that notifies a USB-connected voxstick when an agent task ends. The LCD
+alternates full-screen red and green, then restores the latest mascot or
+doghouse state. The default is three rounds; the WebUSB config page accepts
+`0` through `10`, where `0` disables the reminder.
+
+The hook is repository-scoped and uses the USB data connection, not BLE. If the
+device is absent, busy, connected through a charge-only cable, or running old
+firmware, it exits silently without affecting Copilot. Its native helper is
+compiled lazily and requires `clang`, `pkg-config`, and `libusb-1.0`. On macOS,
+install the host packages with `brew install pkg-config libusb`; Linux users can
+install the equivalent distribution packages. The checked-in Windows hook is
+currently a quiet no-op. VS Code Agent Hooks are a preview feature and their
+configuration format may change.
 
 ## License
 

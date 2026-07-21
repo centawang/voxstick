@@ -49,6 +49,7 @@
 #include "ble_hid.h"
 #include "hid_transport.h"
 #include "vox_config.h"
+#include "vox_notify.h"
 
 // Set to 1 to skip TinyUSB / UAC init - keeps USB-Serial/JTAG console
 // alive on /dev/cu.usbmodem* so we can read ESP_LOG output. Diagnostic
@@ -161,6 +162,9 @@ static const char *TAG = "voxstick";
 #define VENDOR_DOWNLOAD_VALUE    0x5344  // "SD"
 #define VENDOR_DOWNLOAD_INDEX    0x4C44  // "LD"
 #define VENDOR_DOWNLOAD_MAGIC    "VOXSTICK_DOWNLOAD"
+#define VENDOR_NOTIFY_REQUEST    0x5E
+#define VENDOR_NOTIFY_VALUE      0x5043  // "CP"
+#define VENDOR_NOTIFY_INDEX      0x454E  // "NE"
 
 // ---- On-device VAD display ----------------------------------------------
 // Cheap energy gate for the LCD indicator. It is intentionally not a speech
@@ -170,6 +174,7 @@ static const char *TAG = "voxstick";
 #define VAD_OFF_LEVEL      450U
 #define VAD_FULL_LEVEL     5000U
 #define VAD_FRAME_MS       100
+#define COMPLETION_FLASH_PHASE_MS 250
 #define MIC_STATE_POLL_MS        20
 #define MIC_STATE_USB_SETTLE_MS  500
 #define MIC_UNMUTE_HOLD_MS       2000
@@ -195,6 +200,7 @@ static uint32_t                 g_diag_tone_phase = 0;
 static volatile uint32_t        g_vad_level = 0;
 static volatile bool            g_vad_active = false;
 static volatile bool            g_vad_display_enabled = false;
+static TaskHandle_t             g_vad_lcd_task_handle = NULL;
 static bool                     g_clear_ble_bonds_on_boot = false;
 static bool                     g_ignore_buttons_until_release = false;
 static QueueHandle_t            g_hid_action_queue = NULL;
@@ -205,6 +211,14 @@ static QueueHandle_t            g_hid_action_queue = NULL;
 static volatile bool            g_imu_mute  = false;
 
 static bool hid_queue_action(const char *gesture, vox_hid_action_t action);
+
+void vox_notify_copilot_done(void)
+{
+    TaskHandle_t task = g_vad_lcd_task_handle;
+    if (task != NULL) {
+        xTaskNotifyGive(task);
+    }
+}
 
 static bool effective_mic_muted(void)
 {
@@ -822,10 +836,50 @@ static void vad_lcd_task(void *arg)
     uint8_t last_dog_style = VOX_DOG_STYLE_PIXEL;
     uint32_t animation_frame = 0;
     bool first_frame = true;
+    uint8_t completion_phases_remaining = 0;
+    bool completion_show_green = false;
+    TickType_t completion_deadline = 0;
+    uint32_t pending_notification = 0;
 
     while (1) {
+        TickType_t now = xTaskGetTickCount();
+        if (pending_notification > 0) {
+            uint8_t rounds = vox_config_completion_flash_count();
+            pending_notification = 0;
+            if (rounds > 0) {
+                completion_phases_remaining = rounds * 2U;
+                completion_show_green = false;
+                completion_deadline = now + pdMS_TO_TICKS(COMPLETION_FLASH_PHASE_MS);
+                lcd_clear(COL_RED);
+            }
+        }
+
+        if (completion_phases_remaining > 0) {
+            if ((int32_t)(now - completion_deadline) >= 0) {
+                completion_phases_remaining--;
+                if (completion_phases_remaining == 0) {
+                    lcd_clear(COL_BLACK);
+                    first_frame = true;
+                } else {
+                    completion_show_green = !completion_show_green;
+                    lcd_clear(completion_show_green ? COL_GREEN : COL_RED);
+                    completion_deadline = now +
+                        pdMS_TO_TICKS(COMPLETION_FLASH_PHASE_MS);
+                }
+            }
+            if (completion_phases_remaining > 0) {
+                now = xTaskGetTickCount();
+                TickType_t wait = (int32_t)(completion_deadline - now) > 0
+                    ? completion_deadline - now
+                    : 0;
+                pending_notification = ulTaskNotifyTake(pdTRUE, wait);
+                continue;
+            }
+        }
+
         if (!g_vad_display_enabled) {
-            vTaskDelay(pdMS_TO_TICKS(VAD_FRAME_MS));
+            pending_notification = ulTaskNotifyTake(
+                pdTRUE, pdMS_TO_TICKS(VAD_FRAME_MS));
             continue;
         }
 
@@ -858,7 +912,8 @@ static void vad_lcd_task(void *arg)
         }
 
         animation_frame++;
-        vTaskDelay(pdMS_TO_TICKS(VAD_FRAME_MS));
+        pending_notification = ulTaskNotifyTake(
+            pdTRUE, pdMS_TO_TICKS(VAD_FRAME_MS));
     }
 }
 
@@ -1648,6 +1703,15 @@ bool tud_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage,
     }
 
     if (request->bmRequestType_bit.type == TUSB_REQ_TYPE_VENDOR &&
+        request->bRequest == VENDOR_NOTIFY_REQUEST &&
+        request->wValue == VENDOR_NOTIFY_VALUE &&
+        request->wIndex == VENDOR_NOTIFY_INDEX &&
+        request->wLength == 0) {
+        vox_notify_copilot_done();
+        return tud_control_status(rhport, request);
+    }
+
+    if (request->bmRequestType_bit.type == TUSB_REQ_TYPE_VENDOR &&
         request->bRequest == VENDOR_REQUEST_MICROSOFT &&
         request->wIndex == 7) {
         uint16_t total_len = 0;
@@ -2222,7 +2286,11 @@ void app_main(void)
 #if !VOX_DEBUG_NO_UAC
     lcd_draw_mic_status(0, false, g_codec_ready, effective_mic_muted(), 0,
                         vox_config_dog_style());
-    xTaskCreate(vad_lcd_task, "vad_lcd", 3072, NULL, 4, NULL);
+    if (xTaskCreate(vad_lcd_task, "vad_lcd", 3072, NULL, 4,
+                    &g_vad_lcd_task_handle) != pdPASS) {
+        g_vad_lcd_task_handle = NULL;
+        ESP_LOGE(TAG, "VAD LCD task creation failed");
+    }
 #endif
 
 #if VOX_AUTO_DOWNLOAD_AFTER_SEC > 0

@@ -468,6 +468,21 @@
               </div>
 
               <div class="setting">
+                <label for="completionFlashCount">Copilot 完成闪烁轮数</label>
+                <input
+                  id="completionFlashCount"
+                  type="number"
+                  min="0"
+                  max="10"
+                  step="1"
+                  inputmode="numeric"
+                />
+                <p class="fine-print">
+                  一轮为红色和绿色各闪一次；设为 0 可关闭完成提醒。
+                </p>
+              </div>
+
+              <div class="setting">
                 <div class="sub-label">BtnA 映射</div>
                 <div id="btnAActions"></div>
               </div>
@@ -504,6 +519,9 @@
                   <button id="reloadBtn" class="secondary" type="button">
                     重新读取
                   </button>
+                  <button id="testNotifyBtn" class="secondary" type="button">
+                    测试完成提醒
+                  </button>
                   <button id="resetBtn" class="danger" type="button">
                     恢复默认
                   </button>
@@ -531,6 +549,8 @@
             <dd id="summaryFlatTransition">-</dd>
             <dt>小狗形象</dt>
             <dd id="summaryDogStyle">-</dd>
+            <dt>完成闪烁</dt>
+            <dd id="summaryCompletionFlashes">-</dd>
             <dt>BtnA 单击</dt>
             <dd id="summaryASingle">-</dd>
             <dt>BtnA 双击</dt>
@@ -561,12 +581,13 @@
 
       const VOX_VID = 0x303a;
       const VOX_PID = 0x8001;
-      const PROTOCOL_VERSION = 7;
+      const PROTOCOL_VERSION = 8;
       const CMD_GET = 1;
       const CMD_SET = 2;
       const CMD_RESET = 3;
+      const CMD_NOTIFY = 4;
       const STATUS_OK = 0;
-      const CONFIG_SIZE = 34;
+      const CONFIG_SIZE = 35;
       const TRANSFER_TIMEOUT_MS = 1500;
       const CONNECTION_TIMEOUT_MS = 5000;
       const ACCEL_1G_LSB = 16384;
@@ -581,6 +602,7 @@
         flatThresholdLsb: 10500,
         flatTransitionMs: 300,
         dogStyle: 0,
+        completionFlashCount: 3,
         aSingleModifier: 0,
         aSingleKeycode: 0x28,
         aSingleRepeat: 1,
@@ -699,7 +721,7 @@
       };
 
       const STATUS_TEXT = {
-        1: "设备不认识这条配置请求，请刷入支持小狗形象选择的协议 v7 固件。",
+        1: "设备不认识这条配置请求，请刷入支持完成提醒的协议 v8 固件。",
         2: "配置值不合法。",
         3: "设备保存配置失败。",
       };
@@ -722,6 +744,7 @@
 
       function setDirty(value) {
         state.dirty = value;
+        $("testNotifyBtn").disabled = !state.connected || value;
         $("dirtyBadge").textContent = state.connected
           ? value
             ? "有未保存改动"
@@ -968,6 +991,7 @@
         );
         $("flatTransitionMs").value = String(config.flatTransitionMs);
         $("dogStyle").value = String(config.dogStyle);
+        $("completionFlashCount").value = String(config.completionFlashCount);
         for (const { kind } of ACTION_DEFS) {
           writeActionUi(
             kind,
@@ -1007,6 +1031,14 @@
         if (!Number.isInteger(dogStyle) || !DOG_STYLE_NAMES[dogStyle]) {
           throw new Error("请选择有效的小狗形象。");
         }
+        const completionFlashCount = Number($("completionFlashCount").value);
+        if (
+          !Number.isInteger(completionFlashCount) ||
+          completionFlashCount < 0 ||
+          completionFlashCount > 10
+        ) {
+          throw new Error("Copilot 完成闪烁轮数必须是 0 到 10 之间的整数。");
+        }
         const config = {
           flatMute: $("flatMute").checked,
           flatThresholdLsb: flatThresholdDegreesToLsb(
@@ -1014,6 +1046,7 @@
           ),
           flatTransitionMs,
           dogStyle,
+          completionFlashCount,
           longPressMs,
         };
         for (const { kind } of ACTION_DEFS) {
@@ -1039,6 +1072,7 @@
           $("summaryFlatThreshold").textContent = "-";
           $("summaryFlatTransition").textContent = "-";
           $("summaryDogStyle").textContent = "-";
+          $("summaryCompletionFlashes").textContent = "-";
           for (const { summary } of ACTION_DEFS) {
             $(summary).textContent = "-";
           }
@@ -1051,6 +1085,10 @@
         $("summaryFlatTransition").textContent =
           `${config.flatTransitionMs} ms`;
         $("summaryDogStyle").textContent = DOG_STYLE_NAMES[config.dogStyle] || "未知";
+        $("summaryCompletionFlashes").textContent =
+          config.completionFlashCount === 0
+            ? "关闭"
+            : `${config.completionFlashCount} 轮`;
         for (const { kind, summary } of ACTION_DEFS) {
           $(summary).textContent = actionName(
             config[`${kind}Modifier`],
@@ -1143,7 +1181,7 @@
         }
         const response = await withTimeout(
           state.device.transferIn(state.inEndpoint, 64),
-          "读取配置超时，请先刷入支持小狗形象选择的协议 v7 固件。",
+          "读取配置超时，请先刷入支持完成提醒的协议 v8 固件。",
         );
         return parseResponse(response);
       }
@@ -1164,6 +1202,7 @@
         view.setUint16(29, config.flatThresholdLsb, true);
         view.setUint16(31, config.flatTransitionMs, true);
         payload[33] = config.dogStyle;
+        payload[34] = config.completionFlashCount;
         return payload;
       }
 
@@ -1203,6 +1242,7 @@
           flatThresholdLsb: view.getUint16(29, true),
           flatTransitionMs: view.getUint16(31, true),
           dogStyle: payload[33],
+          completionFlashCount: payload[34],
         };
       }
 
@@ -1235,6 +1275,18 @@
         writeConfigUi(config);
         setDirty(false);
         setStatus("已恢复默认配置。", "ok");
+      }
+
+      async function testCompletionNotification() {
+        const count = Number($("completionFlashCount").value);
+        setStatus("正在触发完成提醒...");
+        await sendCommand(CMD_NOTIFY);
+        setStatus(
+          count === 0
+            ? "完成提醒当前已关闭。"
+            : `已触发 ${count} 轮红绿闪烁。`,
+          "ok",
+        );
       }
 
       async function connectDevice() {
@@ -1347,6 +1399,14 @@
         $("reloadBtn").addEventListener("click", async () => {
           try {
             await loadConfig();
+          } catch (error) {
+            setStatus(error.message || String(error), "error");
+          }
+        });
+
+        $("testNotifyBtn").addEventListener("click", async () => {
+          try {
+            await testCompletionNotification();
           } catch (error) {
             setStatus(error.message || String(error), "error");
           }
