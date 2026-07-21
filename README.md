@@ -38,8 +38,8 @@ work — VoiceInk, MacWhisper Pro, or macOS native Dictation.
 
 - **Real keyboard event**, not a global hotkey faked through Accessibility
 - **Dedicated MEMS mic** + ES8311 codec, away from your laptop fan
-- **Low-power status display** — dim backlight + small mic icon on the
-  240×135 LCD; open mic, muted mic, and a tiny audio meter
+- **Low-power status display** — dim backlight + animated pixel dog on the
+   240×135 LCD while live; muted mode shows the doghouse
 - **IMU privacy mute** — face-up or face-down on a desk = mic muted
 
 ## Hardware

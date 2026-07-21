@@ -211,7 +211,7 @@ static bool effective_mic_muted(void)
 // =========================================================================
 // LCD — ST7789P3 over SPI3, used as a low-power status indicator.
 //
-// Boot draws a tiny colour badge. Runtime shows an animated happy dog while
+// Boot draws a tiny colour badge. Runtime shows an animated pixel dog while
 // the mic is live and a doghouse while muted, both on a black background.
 //
 // Stage palette (also returned by lcd_status() for grep-ability):
@@ -470,62 +470,52 @@ static void lcd_draw_doghouse(bool codec_ready)
     }
 }
 
-static void lcd_draw_happy_dog(uint32_t level, bool active,
+static void lcd_draw_pixel_dog(uint32_t level, bool active,
                                uint32_t animation_frame)
 {
-    const int cx = LCD_W / 2;
-    int motion = active
-        ? (((animation_frame / 5U) & 1U) ? 1 : -1)
-        : 0;
-    int bob = active ? motion : 0;
-    int head_y = 104 + bob;
+    int bob = active && ((animation_frame / 4U) & 1U) ? 3 : 0;
+    bool mouth_open = active && ((animation_frame / 3U) & 1U);
     bool blink = animation_frame % 60U == 0;
 
-    // Floppy ears move in opposite directions; speech adds a small head bob.
-    lcd_draw_thick_line(cx - 25, head_y - 23,
-                        cx - 39 - motion, head_y + 9, 15, COL_DOG_BROWN);
-    lcd_draw_thick_line(cx + 25, head_y - 23,
-                        cx + 39 + motion, head_y + 9, 15, COL_DOG_BROWN);
-    lcd_fill_circle(cx, head_y, 39, COL_DOG_FUR);
-    lcd_fill_circle(cx - 22, head_y - 27, 13, COL_DOG_FUR);
-    lcd_fill_circle(cx + 22, head_y - 27, 13, COL_DOG_FUR);
+    // Body, short legs, and a blocky raised tail.
+    lcd_fill_rect(39, 137 + bob, 96, 179 + bob, COL_DOG_FUR);
+    lcd_fill_rect(31, 165 + bob, 45, 185 + bob, COL_DOG_FUR);
+    lcd_fill_rect(90, 165 + bob, 104, 185 + bob, COL_DOG_FUR);
+    lcd_fill_rect(101, 145 + bob, 120, 154 + bob, COL_DOG_FUR);
+    lcd_fill_rect(108, 137 + bob, 117, 153 + bob, COL_DOG_FUR);
+
+    // Square head, floppy ears, and cream muzzle.
+    lcd_fill_rect(31, 61 + bob, 104, 133 + bob, COL_DOG_FUR);
+    lcd_fill_rect(22, 51 + bob, 44, 92 + bob, COL_DOG_BROWN);
+    lcd_fill_rect(91, 51 + bob, 113, 92 + bob, COL_DOG_BROWN);
+    lcd_fill_rect(45, 86 + bob, 90, 128 + bob, COL_DOG_MUZZLE);
 
     if (blink) {
-        lcd_fill_rect(cx - 22, head_y - 8, cx - 13, head_y - 5,
-                      COL_DOG_BROWN);
-        lcd_fill_rect(cx + 13, head_y - 8, cx + 22, head_y - 5,
-                      COL_DOG_BROWN);
+        lcd_fill_rect(46, 85 + bob, 55, 88 + bob, COL_DOG_BROWN);
+        lcd_fill_rect(81, 85 + bob, 90, 88 + bob, COL_DOG_BROWN);
     } else {
-        lcd_fill_circle(cx - 17, head_y - 7, 4, COL_DOG_BROWN);
-        lcd_fill_circle(cx + 17, head_y - 7, 4, COL_DOG_BROWN);
-        lcd_fill_circle(cx - 16, head_y - 8, 1, COL_WHITE);
-        lcd_fill_circle(cx + 18, head_y - 8, 1, COL_WHITE);
+        lcd_fill_rect(46, 82 + bob, 55, 91 + bob, COL_DOG_BROWN);
+        lcd_fill_rect(81, 82 + bob, 90, 91 + bob, COL_DOG_BROWN);
+        lcd_fill_rect(48, 83 + bob, 51, 86 + bob, COL_WHITE);
+        lcd_fill_rect(83, 83 + bob, 86, 86 + bob, COL_WHITE);
+    }
+    lcd_fill_rect(62, 99 + bob, 74, 108 + bob, COL_DOG_BROWN);
+
+    if (mouth_open) {
+        int mouth_height = 9 + (int)(level * 5U / VAD_FULL_LEVEL);
+        lcd_fill_rect(59, 113 + bob, 77, 113 + bob + mouth_height,
+                      COL_DOG_BROWN);
+        lcd_fill_rect(63, 119 + bob + mouth_height / 2,
+                      73, 124 + bob + mouth_height / 2,
+                      COL_DOG_TONGUE);
+    } else {
+        lcd_fill_rect(65, 110 + bob, 70, 122 + bob, COL_DOG_BROWN);
+        lcd_fill_rect(56, 118 + bob, 79, 123 + bob, COL_DOG_BROWN);
     }
 
-    lcd_fill_circle(cx - 10, head_y + 10, 13, COL_DOG_MUZZLE);
-    lcd_fill_circle(cx + 10, head_y + 10, 13, COL_DOG_MUZZLE);
-    lcd_fill_circle(cx, head_y + 5, 6, COL_DOG_BROWN);
-
-    if (active) {
-        int mouth_radius = 7 + (int)(level * 5U / VAD_FULL_LEVEL);
-        lcd_fill_circle(cx, head_y + 23, mouth_radius, COL_DOG_BROWN);
-        lcd_fill_circle(cx, head_y + 27 + motion, mouth_radius - 3,
-                        COL_DOG_TONGUE);
-        lcd_fill_rect(cx - mouth_radius, head_y + 17,
-                      cx + mouth_radius + 1, head_y + 23, COL_DOG_BROWN);
-    } else {
-        lcd_draw_thick_line(cx, head_y + 13, cx, head_y + 20,
-                            3, COL_DOG_BROWN);
-        lcd_draw_thick_line(cx, head_y + 20, cx - 10, head_y + 25,
-                            3, COL_DOG_BROWN);
-        lcd_draw_thick_line(cx, head_y + 20, cx + 10, head_y + 25,
-                            3, COL_DOG_BROWN);
-    }
-
-    lcd_fill_rect(cx - 29, head_y + 33, cx + 30, head_y + 39,
-                  COL_DOG_COLLAR);
-    int tag_radius = 4 + (int)(level * 3U / VAD_FULL_LEVEL);
-    lcd_fill_circle(cx, head_y + 40, tag_radius, COL_YELLOW);
+    lcd_fill_rect(39, 132 + bob, 96, 139 + bob, COL_DOG_COLLAR);
+    lcd_fill_rect(63, 139 + bob, 72, 148 + bob, COL_YELLOW);
+    lcd_fill_rect(30, 188, 106, 192, COL_DARK_GRAY);
 }
 
 static void lcd_draw_mic_status(uint32_t level, bool active,
@@ -540,7 +530,7 @@ static void lcd_draw_mic_status(uint32_t level, bool active,
 
     lcd_runtime_frame_begin(COL_BLACK);
     if (codec_ready && !muted) {
-        lcd_draw_happy_dog(level, active, animation_frame);
+        lcd_draw_pixel_dog(level, active, animation_frame);
     } else {
         lcd_draw_doghouse(codec_ready);
     }
